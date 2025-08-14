@@ -17,6 +17,7 @@ import plotly.express as px
 st.set_page_config(page_title="ONE Content-Cluster-Visualizer", layout="wide")
 st.image("https://onebeyondsearch.com/img/ONE_beyond_search%C3%94%C3%87%C3%B4gradient%20%282%29.png", width=250)
 st.title("ONE Content-Cluster-Visualizer – Domains visuell analysieren")
+st.caption("Build: robust-2025-08-14")
 
 st.markdown(
     """
