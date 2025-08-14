@@ -41,7 +41,9 @@ def _cleanup_headers(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def robust_read_table(uploaded_file):
-    """Robustes Einlesen: CSV (versch. Encodings/Seps) oder Excel."""
+    """Robustes Einlesen: CSV (versch. Encodings/Seps) oder Excel.
+    Zusätzlich: Fallback, falls versehentlich alles in einer Spalte gelandet ist (Semikolon-getrennt).
+    """
     name = uploaded_file.name.lower()
     raw = uploaded_file.getvalue()
 
@@ -66,10 +68,19 @@ def robust_read_table(uploaded_file):
         try:
             df = pd.read_csv(BytesIO(raw), sep=None, engine='python', encoding=enc, dtype=str, low_memory=False)
             if df.shape[1] > 0:
-                return _cleanup_headers(df)
+                df = _cleanup_headers(df)
+                # FALLBACK: Wenn nur 1 Spalte existiert und Header Semikolons enthält -> neu mit sep=';'
+                if df.shape[1] == 1 and ';' in df.columns[0]:
+                    try:
+                        df2 = pd.read_csv(BytesIO(raw), sep=';', encoding=enc, dtype=str, low_memory=False)
+                        return _cleanup_headers(df2)
+                    except Exception:
+                        pass
+                return df
         except Exception:
             pass
 
+    # Raster: Encodings x Separators
     seps = [',', ';', '\t', '|', ':']
     for enc in encodings:
         for sep in seps:
@@ -178,6 +189,30 @@ def find_column(possible_names, columns):
             return lower[n]
     return None
 
+# Heuristik, um Embedding-Spalte automatisch zu erkennen, wenn Kandidatenliste nichts liefert
+
+def autodetect_embedding_column(df: pd.DataFrame, sample=50):
+    def looks_like_embedding_series(s: pd.Series) -> bool:
+        non_null = s.dropna().astype(str).head(sample)
+        if non_null.empty:
+            return False
+        hits = 0
+        for v in non_null:
+            v = v.strip()
+            # JSON-Liste oder viele Zahlen/Kommas -> wie Embedding-Vektor
+            if (v.startswith('[') and v.endswith(']')) or (',' in v and any(ch.isdigit() for ch in v)):
+                if v.count(',') >= 5 or v.count(' ') >= 5:
+                    hits += 1
+        return hits >= max(3, int(len(non_null) * 0.2))
+
+    for c in df.columns:
+        try:
+            if looks_like_embedding_series(df[c]):
+                return c
+        except Exception:
+            pass
+    return None
+
 # =============================
 # Uploads
 # =============================
@@ -198,17 +233,30 @@ except Exception as e:
     st.error(str(e))
     st.stop()
 
+# --- Spaltenfindung (robust) ---
 url_col = find_column(['URL', 'URLs', 'Adresse', 'Address', 'Seite', 'Page'], df.columns)
-embedding_col = find_column(['ChatGPT Embedding Erzeugung', 'ChatGPT Embedding Erzeugung 1', 'Embedding'], df.columns)
 
-segment_col = None
-for candidate in ['Segmente', 'Segment', 'Segments', 'Cluster']:
-    if candidate in df.columns:
-        segment_col = candidate
-        break
+embedding_col = find_column([
+    'ChatGPT Embedding Erzeugung',
+    'ChatGPT Embedding Erzeugung 1',
+    'Embedding',
+    'Embeddings',
+    'Embedding Vector',
+    'OpenAI Embedding',
+    'Extract embeddings from page content',  # deine aktuelle Datei
+], df.columns)
 
+if embedding_col is None:
+    # Fallback: automatische Erkennung
+    embedding_col = autodetect_embedding_column(df)
+
+# Falls URL oder Embedding weiterhin fehlen: aussagekräftige Fehlermeldung mit Spaltenvorschlag
 if url_col is None or embedding_col is None:
-    st.error("❌ URL‑ oder Embedding‑Spalte nicht gefunden.")
+    st.error(
+        "❌ URL‑ oder Embedding‑Spalte nicht gefunden.\n\n"
+        f"Gefundene Spalten: {list(df.columns)}\n\n"
+        "Erwarte URL‑Spalte (z. B. URL/Adresse/Page) und eine Embedding‑Spalte (z. B. 'Embedding' oder eine Liste von Zahlen)."
+    )
     st.stop()
 
 # Parse/normalize embeddings
@@ -325,6 +373,12 @@ def build_plot():
 
     # Cluster
     method = cluster_method
+    segment_col = None
+    for candidate in ['Segmente', 'Segment', 'Segments', 'Cluster']:
+        if candidate in df.columns:
+            segment_col = candidate
+            break
+
     if method == 'K‑Means':
         kmeans = KMeans(n_clusters=cluster_k, random_state=42)
         merged['Cluster'] = kmeans.fit_predict(embedding_matrix).astype(str)
