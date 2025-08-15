@@ -17,19 +17,14 @@ import plotly.express as px
 st.set_page_config(page_title="ONE Content-Cluster-Visualizer", layout="wide")
 st.image("https://onebeyondsearch.com/img/ONE_beyond_search%C3%94%C3%87%C3%B4gradient%20%282%29.png", width=250)
 st.title("ONE Content-Cluster-Visualizer – Domains visuell analysieren")
-st.caption("Build: robust-2025-08-14c")
 
-st.markdown(
-    """
-<div style="background-color:#f2f2f2; color:#000; padding:12px 16px; border-radius:8px; font-size:0.95em; max-width:900px; line-height:1.55;">
-  Dieses Tool visualisiert Seiten-Embeddings mit <b>t-SNE</b> und bietet Cluster-Optionen (K-Means, DBSCAN, Segments).
-  Optional kannst du eine <b>GSC-CSV</b> uploaden, um Bubble-Größen nach <i>Klicks</i> oder <i>Impressionen</i> zu skalieren. 
-  Export: interaktives <b>HTML</b> und optional <b>Cosinus-Ähnlichkeits-CSV</b>.
+st.markdown("""
+<div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 0.9em; max-width: 600px; margin-bottom: 1.5em; line-height: 1.5;">
+  Entwickelt von <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">Daniel Kremer</a> von <a href="https://onebeyondsearch.com/" target="_blank">ONE Beyond Search</a> &nbsp;|&nbsp;
+  Folge mir auf <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">LinkedIn</a>
 </div>
 <hr>
-""",
-    unsafe_allow_html=True,
-)
+""", unsafe_allow_html=True)
 
 # =============================
 # Utilities
@@ -227,6 +222,22 @@ def autodetect_embedding_column(df: pd.DataFrame, sample=50):
             pass
     return None
 
+# -------------------------------------------------
+# URL-Kandidaten (für beide Dateien wiederverwendet)
+# -------------------------------------------------
+URL_CANDIDATES_BASE = [
+    "URL", "Page", "Pages",
+    "Adresse", "Address",
+    "Seite", "Seiten",
+    "URLs",
+    "URL-Adresse", "URL Adresse",
+]
+
+# Für GSC typische Zusatz-Bezeichnungen
+URL_CANDIDATES_GSC_EXTRA = [
+    "Landing Page", "Seiten-URL", "Seiten URL"
+]
+
 # =============================
 # Uploads
 # =============================
@@ -248,11 +259,23 @@ except Exception as e:
     st.stop()
 
 # Sichtbare Diagnose: welche Spalten hat die Datei?
-st.caption(f"Columns detected: {list(df.columns)}")
+st.caption(f"Columns detected (Embedding-Datei): {list(df.columns)}")
 
 # --- Spaltenfindung (robust) ---
-url_col = find_column(["URL", "URLs", "Adresse", "Address", "Seite", "Page"], df.columns)
 
+# URL-Spalte im Embedding-Dokument
+url_col = find_column(URL_CANDIDATES_BASE, df.columns)
+
+# Fuzzy-Fallback: alles, was sinngemäß nach URL/Page aussieht
+if url_col is None:
+    for c in df.columns:
+        n = str(c).lower().replace("-", " ")
+        if any(tok in n for tok in ["url", "page", "adresse", "address", "seite", "seiten"]):
+            url_col = c
+            break
+
+# Embedding-Spalte
+# 1) Harte Kandidatenliste
 embedding_col = find_column([
     "ChatGPT Embedding Erzeugung",
     "ChatGPT Embedding Erzeugung 1",
@@ -263,8 +286,16 @@ embedding_col = find_column([
     "Extract embeddings from page content",  # häufige Export-Bezeichnung
 ], df.columns)
 
+# 2) NEU: Fuzzy-Match per Spaltenname
 if embedding_col is None:
-    # Fallback: automatische Erkennung
+    for c in df.columns:
+        colname = str(c).lower()
+        if ("embedding" in colname) or ("embed" in colname) or ("vector" in colname):
+            embedding_col = c
+            break
+
+# 3) Fallback: heuristische Inhalts-Erkennung
+if embedding_col is None:
     embedding_col = autodetect_embedding_column(df)
 
 # Falls URL oder Embedding weiterhin fehlen: aussagekräftige Fehlermeldung
@@ -295,13 +326,27 @@ perf_url_col = clicks_col = impressions_col = None
 if gsc_file is not None:
     try:
         perf_df = robust_read_table(gsc_file)
-        perf_url_col = find_column(["URL", "URLs", "Adresse", "Address", "Seite", "Page", "Pages", "Landing Page", "Seiten-URL"], perf_df.columns)
+        st.caption(f"Columns detected (GSC-Datei): {list(perf_df.columns)}")
+
+        # URL-Spalte im GSC-Dokument
+        perf_url_col = find_column(URL_CANDIDATES_BASE + URL_CANDIDATES_GSC_EXTRA, perf_df.columns)
+
+        # Fuzzy-Fallback auch für GSC
+        if perf_url_col is None:
+            for c in perf_df.columns:
+                n = str(c).lower().replace("-", " ")
+                if any(tok in n for tok in ["url", "page", "adresse", "address", "seite", "seiten", "landing"]):
+                    perf_url_col = c
+                    break
+
+        # Klicks/Impressions
         for c in perf_df.columns:
             name = str(c).strip().lower()
             if clicks_col is None and ("klick" in name or "click" in name):
                 clicks_col = c
             if impressions_col is None and ("impress" in name):
                 impressions_col = c
+
         if perf_url_col is None:
             st.warning("⚠️ Konnte URL-Spalte in der GSC-Datei nicht erkennen – Bubbles werden nicht nach GSC-Metriken skaliert.")
             perf_df = None
@@ -316,16 +361,30 @@ st.sidebar.header("Einstellungen")
 cluster_method = st.sidebar.selectbox(
     "Clustermethode",
     ["K-Means", "Segments", "DBSCAN (Cosinus)"],
-    help="K-Means: feste Clusterzahl • Segments: nimmt Segment-Spalte • DBSCAN: dichtebasiert (Cosinus)",
+    help="K-Means: feste Clusterzahl • Segments: nimmt Segment-Spalte z.B. aus Screaming Frog Crawl • DBSCAN: dichtebasiert (Cosinus)",
 )
-cluster_k = st.sidebar.slider("Cluster (nur K-Means)", min_value=2, max_value=20, value=8, step=1)
 
-# t-SNE metric
-metric_label = st.sidebar.selectbox(
-    "t-SNE-Metrik",
-    ["Euklidisch – stabil, Standard", "Cosinus – konsistent zur Ähnlichkeits-CSV"],
+cluster_k = st.sidebar.slider(
+    "Cluster (nur K-Means)",
+    min_value=2,
+    max_value=20,
+    value=8,
+    step=1,
+    help="Legt fest, in wie viele Gruppen (Cluster) die Punkte bei der K-Means-Methode unterteilt werden. "
+         "Eine höhere Zahl erzeugt kleinere, spezialisiertere Gruppen; eine niedrigere Zahl erzeugt größere, "
+         "allgemeinere Cluster. Nur relevant, wenn ‚K-Means‘ gewählt ist."
 )
-tsne_metric = "euclidean" if metric_label.startswith("Euklidisch") else "cosine"
+
+# Darstellungsmethode (Abstand) – ehemals t-SNE-Metrik
+metric_label = st.sidebar.selectbox(
+    "Darstellungsmethode (Abstand)",
+    ["Euklidisch", "Cosinus"],
+    help=("Bestimmt, wie der Abstand bzw. die Ähnlichkeit zwischen Seiten berechnet wird, bevor die t-SNE-Visualisierung erstellt wird.\n\n"
+          "Euklidisch: misst die „Luftlinie“ im Embedding-Raum, stabil und Standard.\n\n"
+          "Cosinus: misst den Winkel zwischen Vektoren, gut geeignet für semantische Ähnlichkeiten.\n"
+          "Die Wahl beeinflusst nur die Darstellung, nicht die eigentlichen Daten.")
+)
+tsne_metric = "euclidean" if metric_label == "Euklidisch" else "cosine"
 
 # Size scaling options
 size_options = ["Keine Skalierung"]
@@ -352,7 +411,7 @@ export_csv = st.sidebar.checkbox("Cosinus-CSV exportieren", value=False)
 bg_color = st.sidebar.color_picker("Hintergrundfarbe", value="#FFFFFF")
 search_q = st.sidebar.text_input("🔍 URL-Suche (Teilstring)")
 
-recalc = st.sidebar.button("Let's Go / Refresh", type="primary")
+recalc = st.sidebar.button("Let's Go", type="primary")
 
 # =============================
 # Processing & Visualization
@@ -390,21 +449,36 @@ def build_plot():
 
     # Cluster
     method = cluster_method
-    segment_col = None
-    for candidate in ["Segmente", "Segment", "Segments", "Cluster"]:
-        if candidate in df.columns:
-            segment_col = candidate
-            break
+
+    # --- Segment/Cluster-Spalte robust erkennen ---
+    # 1) Exakte Kandidaten (case-insensitive via find_column)
+    segment_col = find_column(["Segmente", "Segment", "Segments", "Cluster"], df.columns)
+
+    # 2) Fuzzy: Namen, die "segment" oder "cluster" enthalten (Bindestriche/Underscores egal)
+    if segment_col is None:
+        for c in df.columns:
+            n = str(c).lower().replace("-", " ").replace("_", " ")
+            tokens = n.split()
+            if any(tok in tokens for tok in ["segment", "segments", "cluster"]):
+                segment_col = c
+                break
 
     if method == "K-Means":
         kmeans = KMeans(n_clusters=cluster_k, random_state=42)
         merged["Cluster"] = kmeans.fit_predict(embedding_matrix).astype(str)
+
     elif method == "DBSCAN (Cosinus)":
         cos_dist = cosine_distances(embedding_matrix)
         dbscan = DBSCAN(eps=0.3, min_samples=5, metric="precomputed")
         merged["Cluster"] = dbscan.fit_predict(cos_dist).astype(str)
-    elif method == "Segments" and segment_col:
-        merged["Cluster"] = merged[segment_col].fillna("Unbekannt").astype(str)
+
+    elif method == "Segments":
+        if segment_col:
+            merged["Cluster"] = merged[segment_col].fillna("Unbekannt").astype(str)
+        else:
+            st.warning("⚠️ Keine Segment-/Cluster-Spalte gefunden – falle zurück auf 'Kein Segment'.")
+            merged["Cluster"] = "Kein Segment"
+
     else:
         merged["Cluster"] = "Kein Segment"
 
@@ -469,7 +543,7 @@ def build_plot():
     if use_centroid:
         cx, cy = tsne_result[len(embedding_matrix), 0], tsne_result[len(embedding_matrix), 1]
         centroid_trace = px.scatter(x=[cx], y=[cy]).update_traces(
-            marker=dict(symbol="star", size=14, color="red", line=dict(width=1, color="black")),
+            marker=dict(symbol="star", size=14, color="red"),  # line optional
             name="Centroid",
         )
         fig.add_trace(centroid_trace.data[0])
@@ -536,4 +610,4 @@ if recalc:
                         mime="text/csv",
                     )
 else:
-    st.info("Wähle Einstellungen in der Sidebar und klicke auf **Let's Go / Refresh**.")
+    st.info("Wähle Einstellungen in der Sidebar und klicke auf **Let's Go**.")
