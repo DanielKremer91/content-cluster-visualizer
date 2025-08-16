@@ -114,7 +114,6 @@ def parse_embedding(value):
             s = value.strip()
             if s.startswith("[") and s.endswith("]"):
                 return ast.literal_eval(s)
-            # Falls Werte '0.1, 0.2, 0.3' ohne Klammern
             return ast.literal_eval(f"[{s.strip(', ')}]")
     except Exception:
         return None
@@ -208,7 +207,6 @@ def autodetect_embedding_column(df: pd.DataFrame, sample=50):
         hits = 0
         for v in non_null:
             v = v.strip()
-            # JSON-Liste oder viele Zahlen/Kommas -> wie Embedding-Vektor
             if (v.startswith("[") and v.endswith("]")) or ("," in v and any(ch.isdigit() for ch in v)):
                 if v.count(",") >= 5 or v.count(" ") >= 5:
                     hits += 1
@@ -317,6 +315,15 @@ if len(df_valid) < 5:
 
 embedding_matrix = np.array(df_valid["embedding_vector"].tolist())
 st.caption(f"✅ Gültige Embeddings: {len(df_valid)} · Vektor-Dim: {embedding_matrix.shape[1]}")
+
+# =============================
+# Interaktive URL-Suche (im Hauptbereich; beeinflusst NUR Highlighting, NICHT Exporte)
+# =============================
+search_q = st.text_input(
+    "🔍 URL-Suche (Teilstring)",
+    value="",
+    help="Markiert Treffer im Plot. Beeinflusst weder Berechnungen noch Exporte."
+)
 
 # Optional: Performance-/Metrik-Datei einlesen + numerische Kandidaten sammeln
 perf_df = None
@@ -466,11 +473,36 @@ clip_high = st.sidebar.slider(
 # Centroid & CSV-Export
 show_centroid = st.sidebar.checkbox(
     "Centroid markieren", value=False,
-    help="Markiert den Durchschnitt aller Embeddings als Stern. Nützlich, um die Mitte der Punktwolke zu sehen."
+    help="Markiert den thematischen Schwerpunkt der analysierten URLs (Centroid), berechnet als Durchschnitt aller Embeddings."
 )
+
+# Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
 export_csv = st.sidebar.checkbox(
     "Cosinus-CSV exportieren", value=False,
-    help="Exportiert alle Paar-Ähnlichkeiten (Cosinus) als CSV. Achtung: O(n²)-Paare bei vielen URLs!"
+    help="Exportiert Paar-Ähnlichkeiten (Cosinus) als CSV. Achtung: O(n²)-Paare ohne Filter!"
+)
+sim_threshold = st.sidebar.slider(
+    "Ähnlichkeitsschwelle (Cosinus)",
+    min_value=0.00, max_value=1.00, value=0.00, step=0.01,
+    help=("Nur Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert werden exportiert. "
+          "1.00 = sehr ähnlich/identisch, 0.00 = keine Ähnlichkeit. "
+          "Hinweis: Cosinus-Ähnlichkeit kann theoretisch negativ sein; Werte <0 sind hier implizit ausgeschlossen."),
+    disabled=not export_csv
+)
+
+# Export 2: Low-Relevance (Centroid-Ähnlichkeit) mit Schwellwert
+export_lowrel_csv = st.sidebar.checkbox(
+    "Low-Relevance-CSV exportieren", value=False,
+    help=("Identifizierung von Low-Relevance URLs (thematische Ausreißer-URLs). "
+          "Z. B. alle Seiten unter 0,4 Ähnlichkeit zum Durchschnitt können als Ausreißer bezeichnet werden. "
+          "Schwellenwert ist flexibel anpassbar.")
+)
+lowrel_threshold = st.sidebar.slider(
+    "Ähnlichkeitsschwelle zum Centroid (Cosinus)",
+    min_value=0.00, max_value=1.00, value=0.40, step=0.01,
+    help=("Nur Seiten mit Cosinus-Ähnlichkeit zum Centroid unterhalb der Schwelle werden exportiert. "
+          "Niedrige Werte = thematisch abweichend."),
+    disabled=not export_lowrel_csv
 )
 
 # Bubble-Scale nur anzeigen, wenn skaliert wird und Performance-Datei vorhanden ist; sonst 1.0
@@ -484,15 +516,15 @@ else:
     bubble_scale = 1.0  # Standard: kein globales Upscaling/Downscaling
 
 bg_color = st.sidebar.color_picker("Hintergrundfarbe", value="#FFFFFF")
-search_q = st.sidebar.text_input("🔍 URL-Suche (Teilstring)")
 
 recalc = st.sidebar.button("Let's Go", type="primary")
 
 # =============================
-# Processing & Visualization
+# Build data (heavy) & cache in session_state
 # =============================
 
-def build_plot():
+def build_data_and_cache():
+    """Schwere Schritte ausführen und Ergebnis in Session-State ablegen."""
     merged = df_valid.copy()
 
     # Merge Performance-Metriken (alle Kandidaten-Spalten)
@@ -507,48 +539,38 @@ def build_plot():
 
     # t-SNE
     perplexity = int(min(30, max(5, len(merged) // 3)))
-    X = embedding_matrix
-    use_centroid = bool(show_centroid)
-    if use_centroid:
-        centroid_vec = np.mean(embedding_matrix, axis=0, keepdims=True)
-        X = np.vstack([embedding_matrix, centroid_vec])
+    X = np.array(merged["embedding_vector"].tolist())
+    use_centroid_flag = bool(show_centroid)  # nur für Rendering relevant
+    if use_centroid_flag:
+        centroid_vec = np.mean(X, axis=0, keepdims=True)
+        X_tsne = np.vstack([X, centroid_vec])
+    else:
+        X_tsne = X
 
-    try:
-        tsne = TSNE(n_components=2, metric=tsne_metric, random_state=42, perplexity=perplexity)
-        tsne_result = tsne.fit_transform(X)
-    except Exception as e:
-        st.error(f"❌ Fehler bei t-SNE: {e}")
-        return None, None
+    tsne = TSNE(n_components=2, metric=tsne_metric, random_state=42, perplexity=perplexity)
+    tsne_result = tsne.fit_transform(X_tsne)
 
-    merged["tsne_x"] = tsne_result[: len(embedding_matrix), 0]
-    merged["tsne_y"] = tsne_result[: len(embedding_matrix), 1]
+    merged["tsne_x"] = tsne_result[: len(X), 0]
+    merged["tsne_y"] = tsne_result[: len(X), 1]
 
     # Cluster
     method = cluster_method
-    segment_col = segment_col_global  # vorab erkannte Spalte verwenden
+    segment_col = segment_col_global
 
     if method == "K-Means":
         kmeans = KMeans(n_clusters=cluster_k, random_state=42)
-        merged["Cluster"] = kmeans.fit_predict(embedding_matrix).astype(str)
+        merged["Cluster"] = kmeans.fit_predict(X).astype(str)
     elif method == "DBSCAN (Cosinus)":
-        cos_dist = cosine_distances(embedding_matrix)
+        cos_dist = cosine_distances(X)
         dbscan = DBSCAN(eps=0.3, min_samples=5, metric="precomputed")
         merged["Cluster"] = dbscan.fit_predict(cos_dist).astype(str)
     elif method == "Segments":
         if segment_col:
             merged["Cluster"] = merged[segment_col].fillna("Unbekannt").astype(str)
         else:
-            st.warning("⚠️ Keine Segment-/Cluster-Spalte gefunden – falle zurück auf 'Kein Segment'.")
             merged["Cluster"] = "Kein Segment"
     else:
         merged["Cluster"] = "Kein Segment"
-
-    # Suche/Highlight
-    merged["Highlight"] = False
-    q = (search_q or "").strip().lower()
-    if q:
-        merged["Highlight"] = merged[url_col].astype(str).str.lower().str.contains(q, na=False)
-        st.caption(f"✨ {int(merged['Highlight'].sum())} Treffer für „{q}“")
 
     # Bubblegrößen
     scaled = False
@@ -570,19 +592,50 @@ def build_plot():
     else:
         merged["__marker_size"] = float(size_min)
 
-    shrink = float(bubble_scale)
     if scaled:
-        merged["__marker_px"] = (merged["__marker_size"] * shrink).clip(lower=1)
+        merged["__marker_px"] = (merged["__marker_size"] * float(bubble_scale)).clip(lower=1)
     else:
-        merged["__marker_px"] = max(1, int(size_min * shrink))
+        merged["__marker_px"] = max(1, int(size_min * float(bubble_scale)))
 
-    # Plot
-    title = "🔍 t-SNE der Seiten-Embeddings (mit Skalierung)" if scaled else "🔍 t-SNE der Seiten-Embeddings"
-    hover_cols = {url_col: True, "Cluster": True}
+    # === Cache für schnelles Re-Rendern bei Suche ===
+    st.session_state["merged_cached"] = merged
+    st.session_state["scaled_cached"] = scaled
+    st.session_state["hover_cols_cached"] = _build_hover_cols(merged, metric_col)
+    st.session_state["plot_title_cached"] = "🔍 t-SNE der Seiten-Embeddings (mit Skalierung)" if scaled else "🔍 t-SNE der Seiten-Embeddings"
+    st.session_state["bg_color_cached"] = bg_color
+    st.session_state["highlight_px_cached"] = max(int(size_min * float(bubble_scale)) + 6, 8)
+    st.session_state["url_col_cached"] = url_col
+    st.session_state["centroid_in_tsne"] = use_centroid_flag
+    if use_centroid_flag:
+        st.session_state["centroid_xy"] = (tsne_result[len(X), 0], tsne_result[len(X), 1])
+    else:
+        st.session_state["centroid_xy"] = None
+
+
+def _build_hover_cols(merged, metric_col):
+    h = {url_col: True, "Cluster": True}
     for extra in {metric_col, clicks_col, impressions_col}:
         if extra and extra in merged.columns:
-            hover_cols[extra] = True
+            h[extra] = True
+    return h
 
+
+def render_plot_from_cache(q: str):
+    """Zeichnet den Plot aus den gecachten Daten neu und fügt Highlight hinzu."""
+    merged = st.session_state.get("merged_cached")
+    if merged is None:
+        st.info("Bitte zuerst Einstellungen wählen und auf **Let's Go** klicken.")
+        return
+
+    scaled = st.session_state.get("scaled_cached", False)
+    hover_cols = st.session_state.get("hover_cols_cached", {url_col: True, "Cluster": True})
+    title = st.session_state.get("plot_title_cached", "🔍 t-SNE der Seiten-Embeddings")
+    bg = st.session_state.get("bg_color_cached", "#FFFFFF")
+    url_c = st.session_state.get("url_col_cached", url_col)
+    highlight_px = st.session_state.get("highlight_px_cached", 10)
+    centroid_xy = st.session_state.get("centroid_xy", None)
+
+    # Grundplot
     fig = px.scatter(
         merged,
         x="tsne_x",
@@ -593,33 +646,37 @@ def build_plot():
         title=title,
     )
 
-    # Markergrößen je Trace setzen
+    # Markergrößen je Trace setzen (aus Cache)
     for tr in fig.data:
         mask = (merged["Cluster"].astype(str) == tr.name)
         sizes = merged.loc[mask, "__marker_px"].tolist()
         tr.marker.update(size=sizes, sizemode="diameter", opacity=0.55, line=dict(width=0.5, color="white"))
 
-    # Centroid
-    if use_centroid:
-        cx, cy = tsne_result[len(embedding_matrix), 0], tsne_result[len(embedding_matrix), 1]
+    # Centroid ggf. einblenden (nur Darstellung)
+    if centroid_xy is not None:
+        cx, cy = centroid_xy
         centroid_trace = px.scatter(x=[cx], y=[cy]).update_traces(
             marker=dict(symbol="star", size=14, color="red"),
             name="Centroid",
         )
         fig.add_trace(centroid_trace.data[0])
 
-    # Highlight-Layer
-    if merged["Highlight"].any():
-        hi = merged[merged["Highlight"]]
-        highlight_trace = px.scatter(hi, x="tsne_x", y="tsne_y", hover_data={url_col: True}).update_traces(
-            marker=dict(size=max(int(size_min * shrink) + 6, 8), color="yellow", line=dict(width=2, color="black")),
-            showlegend=False,
-        )
-        fig.add_trace(highlight_trace.data[0])
+    # Highlight-Layer nur nach Suche (beeinflusst NICHT Exporte)
+    q = (q or "").strip().lower()
+    if q:
+        mask = merged[url_c].astype(str).str.lower().str.contains(q, na=False)
+        if mask.any():
+            hi = merged[mask]
+            highlight_trace = px.scatter(hi, x="tsne_x", y="tsne_y", hover_data={url_c: True}).update_traces(
+                marker=dict(size=highlight_px, color="yellow", line=dict(width=2, color="black")),
+                showlegend=False,
+            )
+            fig.add_trace(highlight_trace.data[0])
+            st.caption(f"✨ {int(mask.sum())} Treffer für „{q}“")
 
     fig.update_layout(
-        plot_bgcolor=bg_color,
-        paper_bgcolor=bg_color,
+        plot_bgcolor=bg,
+        paper_bgcolor=bg,
         height=750,
         margin=dict(l=10, r=10, t=50, b=10),
         legend_title="Cluster",
@@ -628,46 +685,113 @@ def build_plot():
         hovermode="closest",
     )
 
-    return fig, merged
+    st.subheader("📈 Visualisierung")
+    st.plotly_chart(fig, use_container_width=True)
 
+    # Download des HTMLs immer aus der aktuellen Darstellung generieren
+    html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
+    st.download_button(
+        label="📥 Interaktive HTML-Datei herunterladen",
+        data=html_bytes,
+        file_name="tsne_plot.html",
+        mime="text/html",
+    )
+
+# =============================
+# Run (heavy on refresh, light on search)
+# =============================
 
 if recalc:
     with st.spinner("Berechne t-SNE & erstelle Plot…"):
-        fig, merged = build_plot()
-        if fig is not None:
-            st.subheader("📈 Visualisierung")
-            st.plotly_chart(fig, use_container_width=True)
-
-            # Downloads
-            html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
-            st.download_button(
-                label="📥 Interaktive HTML-Datei herunterladen",
-                data=html_bytes,
-                file_name="tsne_plot.html",
-                mime="text/html",
-            )
-
-            if export_csv:
-                with st.spinner("Berechne Cosinus-Ähnlichkeiten…"):
-                    url_list = merged[url_col].astype(str).tolist()
-                    sim_matrix = cosine_similarity(embedding_matrix)
-                    pairs = []
-                    for i in range(len(url_list)):
-                        for j in range(i + 1, len(url_list)):
-                            pairs.append(
-                                {
-                                    "URL_A": url_list[i],
-                                    "URL_B": url_list[j],
-                                    "Cosinus-Ähnlichkeit": float(sim_matrix[i, j]),
-                                }
-                            )
-                    sim_df = pd.DataFrame(pairs)
-                    csv_bytes = sim_df.to_csv(index=False).encode("utf-8-sig")
-                    st.download_button(
-                        label="📥 Cosinus-Ähnlichkeiten als CSV herunterladen",
-                        data=csv_bytes,
-                        file_name="cosinus_aehnlichkeiten.csv",
-                        mime="text/csv",
-                    )
+        build_data_and_cache()
+        render_plot_from_cache(search_q)
 else:
-    st.info("Wähle Einstellungen in der Sidebar und klicke auf **Let's Go**.")
+    # Kein Recalc: Nur neu zeichnen (Highlight) aus Cache, falls vorhanden
+    render_plot_from_cache(search_q)
+
+# =============================
+# Exporte (unabhängig von Suche!)
+# =============================
+
+# Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
+if export_csv:
+    merged_cached = st.session_state.get("merged_cached")
+    if merged_cached is not None:
+        with st.spinner("Berechne Cosinus-Ähnlichkeiten…"):
+            url_list = merged_cached[url_col].astype(str).tolist()
+            # embedding_matrix stammt aus den Embeddings; hier unverändert
+            sim_matrix = cosine_similarity(np.array(df_valid["embedding_vector"].tolist()))
+
+            thr = float(sim_threshold)
+            pairs = []
+            n = len(url_list)
+            for i in range(n):
+                for j in range(i + 1, n):
+                    s = float(sim_matrix[i, j])
+                    if s >= thr:
+                        pairs.append({"URL_A": url_list[i], "URL_B": url_list[j], "Cosinus_Ähnlichkeit": s})
+
+            if not pairs:
+                st.warning("Keine Paare über der eingestellten Ähnlichkeitsschwelle gefunden.")
+            else:
+                MAX_ROWS = 250_000
+                if len(pairs) > MAX_ROWS:
+                    st.warning(f"Export auf {MAX_ROWS:,} Zeilen begrenzt (von {len(pairs):,}).")
+                    pairs = pairs[:MAX_ROWS]
+                sim_df = pd.DataFrame(pairs)
+                csv_bytes = sim_df.to_csv(index=False).encode("utf-8-sig")
+                st.download_button(
+                    label=f"📥 Cosinus-Ähnlichkeiten als CSV (≥ {thr:.2f})",
+                    data=csv_bytes,
+                    file_name=f"cosinus_aehnlichkeiten_ge_{thr:.2f}.csv",
+                    mime="text/csv",
+                )
+    else:
+        st.info("Für den Export bitte zuerst **Let's Go** ausführen.")
+
+# Export 2: Low-Relevance (Centroid-Ähnlichkeit pro URL) mit Schwellwert
+if export_lowrel_csv:
+    merged_cached = st.session_state.get("merged_cached")
+    if merged_cached is not None:
+        with st.spinner("Berechne Centroid-Ähnlichkeiten pro URL…"):
+            X = np.array(merged_cached["embedding_vector"].tolist())
+            centroid_vec = np.mean(X, axis=0, keepdims=True)
+            centroid_sim = cosine_similarity(X, centroid_vec).ravel()
+
+            low_thr = float(lowrel_threshold)
+            export_df = pd.DataFrame({
+                "URL": merged_cached[url_col].astype(str).values,
+                "Cosinus_Ähnlichkeit_zum_Centroid": centroid_sim
+            })
+
+            if "Cluster" in merged_cached.columns:
+                export_df["Cluster"] = merged_cached["Cluster"].astype(str).values
+
+            if size_by != "Keine Skalierung" and size_by in merged_cached.columns:
+                export_df[size_by] = merged_cached[size_by].values
+
+            for extra_col in [c for c in [clicks_col, impressions_col] if c]:
+                if extra_col in merged_cached.columns:
+                    export_df[extra_col] = merged_cached[extra_col].values
+
+            export_df = export_df[export_df["Cosinus_Ähnlichkeit_zum_Centroid"] < low_thr].copy()
+            export_df = export_df.sort_values("Cosinus_Ähnlichkeit_zum_Centroid", ascending=True)
+
+            if export_df.empty:
+                st.warning("Keine Seiten unterhalb der eingestellten Centroid-Schwelle gefunden.")
+            else:
+                MAX_ROWS = 250_000
+                total_rows = len(export_df)
+                if total_rows > MAX_ROWS:
+                    st.warning(f"Export auf {MAX_ROWS:,} Zeilen begrenzt (von {total_rows:,}).")
+                    export_df = export_df.head(MAX_ROWS)
+
+                csv_bytes = export_df.to_csv(index=False).encode("utf-8-sig")
+                st.download_button(
+                    label=f"📥 Low-Relevance-URLs als CSV (Centroid < {low_thr:.2f})",
+                    data=csv_bytes,
+                    file_name=f"low_relevance_urls_centroid_lt_{low_thr:.2f}.csv",
+                    mime="text/csv",
+                )
+    else:
+        st.info("Für den Export bitte zuerst **Let's Go** ausführen.")
