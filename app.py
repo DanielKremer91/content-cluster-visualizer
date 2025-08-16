@@ -114,6 +114,7 @@ def parse_embedding(value):
             s = value.strip()
             if s.startswith("[") and s.endswith("]"):
                 return ast.literal_eval(s)
+            # Falls Werte '0.1, 0.2, 0.3' ohne Klammern
             return ast.literal_eval(f"[{s.strip(', ')}]")
     except Exception:
         return None
@@ -207,6 +208,7 @@ def autodetect_embedding_column(df: pd.DataFrame, sample=50):
         hits = 0
         for v in non_null:
             v = v.strip()
+            # JSON-Liste oder viele Zahlen/Kommas -> wie Embedding-Vektor
             if (v.startswith("[") and v.endswith("]")) or ("," in v and any(ch.isdigit() for ch in v)):
                 if v.count(",") >= 5 or v.count(" ") >= 5:
                     hits += 1
@@ -229,7 +231,7 @@ URL_CANDIDATES_BASE = [
     "URLs",
     "URL-Adresse", "URL Adresse",
 ]
-URL_CANDIDATES_GSC_EXTRA = ["Landing Page", "Landingpage", "Seiten-URL", "Seiten URL"]
+URL_CANDIDATES_GSC_EXTRA = ["Landing Page", "Seiten-URL", "Seiten URL"]
 
 # =============================
 # Uploads
@@ -287,6 +289,22 @@ if url_col is None or embedding_col is None:
         "Erwarte URL-Spalte (z. B. URL/Adresse/Page) und eine Embedding-Spalte (z. B. 'Embedding' oder eine Liste von Zahlen)."
     )
     st.stop()
+
+# ---- Segment/Cluster-Spalte vorab erkennen (für UI) ----
+SEGMENT_NAME_CANDIDATES = ["Segmente", "Segment", "Segments", "Cluster"]
+
+def detect_segment_col(df_input):
+    seg = find_column(SEGMENT_NAME_CANDIDATES, df_input.columns)
+    if seg is None:
+        # Fuzzy: "segment", "segments", "cluster" als eigenständige Tokens zulassen
+        for c in df_input.columns:
+            n = str(c).lower().replace("-", " ").replace("_", " ")
+            tokens = n.split()
+            if any(tok in tokens for tok in ["segment", "segments", "cluster"]):
+                return c
+    return seg
+
+segment_col_global = detect_segment_col(df)
 
 with st.spinner("Verarbeite Embeddings…"):
     df["embedding_vector"] = df[embedding_col].apply(parse_embedding)
@@ -356,14 +374,26 @@ if perf_file is not None:
         perf_metric_candidates = []
 
 # =============================
-# Sidebar Controls
+# Sidebar Controls (dynamisch)
 # =============================
 st.sidebar.header("Einstellungen")
+
+# Dynamische Optionsliste: 'Segments' nur, wenn Spalte existiert
+cluster_options = ["K-Means", "DBSCAN (Cosinus)"]
+if segment_col_global:
+    cluster_options.insert(1, "Segments")
+
 cluster_method = st.sidebar.selectbox(
     "Clustermethode",
-    ["K-Means", "Segments", "DBSCAN (Cosinus)"],
-    help="K-Means: feste Clusterzahl • Segments: nimmt Segment-Spalte z. B. aus Screaming Frog Crawl • DBSCAN: dichtebasiert (Cosinus)",
+    cluster_options,
+    help=("K-Means: feste Clusterzahl • "
+          + (f"Segments: nutzt erkannte Spalte „{segment_col_global}“ • " if segment_col_global else "")
+          + "DBSCAN: dichtebasiert (Cosinus)")
 )
+if not segment_col_global:
+    st.sidebar.caption("ℹ️ Keine Segment-/Cluster-Spalte erkannt – Option „Segments“ ist deaktiviert.")
+else:
+    st.sidebar.caption(f"✅ Segment-/Cluster-Spalte erkannt: „{segment_col_global}“")
 
 cluster_k = st.sidebar.slider(
     "Cluster (nur K-Means)",
@@ -456,7 +486,7 @@ else:
 bg_color = st.sidebar.color_picker("Hintergrundfarbe", value="#FFFFFF")
 search_q = st.sidebar.text_input("🔍 URL-Suche (Teilstring)")
 
-recalc = st.sidebar.button("Let's Go / Refresh", type="primary")
+recalc = st.sidebar.button("Let's Go", type="primary")
 
 # =============================
 # Processing & Visualization
@@ -495,14 +525,7 @@ def build_plot():
 
     # Cluster
     method = cluster_method
-    segment_col = find_column(["Segmente", "Segment", "Segments", "Cluster"], df.columns)
-    if segment_col is None:
-        for c in df.columns:
-            n = str(c).lower().replace("-", " ").replace("_", " ")
-            tokens = n.split()
-            if any(tok in tokens for tok in ["segment", "segments", "cluster"]):
-                segment_col = c
-                break
+    segment_col = segment_col_global  # vorab erkannte Spalte verwenden
 
     if method == "K-Means":
         kmeans = KMeans(n_clusters=cluster_k, random_state=42)
@@ -647,4 +670,4 @@ if recalc:
                         mime="text/csv",
                     )
 else:
-    st.info("Wähle Einstellungen in der Sidebar und klicke auf **Let's Go / Refresh**.")
+    st.info("Wähle Einstellungen in der Sidebar und klicke auf **Let's Go**.")
