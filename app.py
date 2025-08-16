@@ -84,7 +84,6 @@ def robust_read_table(uploaded_file):
                                 return _cleanup_headers(df2)
                         except Exception:
                             pass
-            # Wenn hier: ok oder bewusst 1 Spalte
             if df.shape[1] > 0:
                 return df
         except Exception:
@@ -115,7 +114,6 @@ def parse_embedding(value):
             s = value.strip()
             if s.startswith("[") and s.endswith("]"):
                 return ast.literal_eval(s)
-            # Falls Werte '0.1, 0.2, 0.3' ohne Klammern
             return ast.literal_eval(f"[{s.strip(', ')}]")
     except Exception:
         return None
@@ -209,7 +207,6 @@ def autodetect_embedding_column(df: pd.DataFrame, sample=50):
         hits = 0
         for v in non_null:
             v = v.strip()
-            # JSON-Liste oder viele Zahlen/Kommas -> wie Embedding-Vektor
             if (v.startswith("[") and v.endswith("]")) or ("," in v and any(ch.isdigit() for ch in v)):
                 if v.count(",") >= 5 or v.count(" ") >= 5:
                     hits += 1
@@ -232,11 +229,7 @@ URL_CANDIDATES_BASE = [
     "URLs",
     "URL-Adresse", "URL Adresse",
 ]
-
-# Für GSC typische Zusatz-Bezeichnungen
-URL_CANDIDATES_GSC_EXTRA = [
-    "Landing Page", "Seiten-URL", "Seiten URL"
-]
+URL_CANDIDATES_GSC_EXTRA = ["Landing Page", "Landingpage", "Seiten-URL", "Seiten URL"]
 
 # =============================
 # Uploads
@@ -244,8 +237,8 @@ URL_CANDIDATES_GSC_EXTRA = [
 st.subheader("1) Embedding-Datei hochladen")
 emb_file = st.file_uploader("CSV/Excel mit URLs und Embeddings", type=["csv", "xlsx", "xls"], key="emb")
 
-st.subheader("2) Optional: Search-Console-Datei hochladen (Klicks/Impressionen)")
-gsc_file = st.file_uploader("GSC CSV/Excel (optional)", type=["csv", "xlsx", "xls"], key="gsc")
+st.subheader("2) Optional: Performance-/Metrik-Datei hochladen (z. B. GSC, SISTRIX, Ahrefs)")
+perf_file = st.file_uploader("Performance-/Metrik-CSV/Excel (optional)", type=["csv", "xlsx", "xls"], key="perf")
 
 if emb_file is None:
     st.info("Bitte zuerst die Embedding-Datei hochladen.")
@@ -258,15 +251,10 @@ except Exception as e:
     st.error(str(e))
     st.stop()
 
-# Sichtbare Diagnose: welche Spalten hat die Datei?
 st.caption(f"Columns detected (Embedding-Datei): {list(df.columns)}")
 
 # --- Spaltenfindung (robust) ---
-
-# URL-Spalte im Embedding-Dokument
 url_col = find_column(URL_CANDIDATES_BASE, df.columns)
-
-# Fuzzy-Fallback: alles, was sinngemäß nach URL/Page aussieht
 if url_col is None:
     for c in df.columns:
         n = str(c).lower().replace("-", " ")
@@ -274,8 +262,6 @@ if url_col is None:
             url_col = c
             break
 
-# Embedding-Spalte
-# 1) Harte Kandidatenliste
 embedding_col = find_column([
     "ChatGPT Embedding Erzeugung",
     "ChatGPT Embedding Erzeugung 1",
@@ -283,22 +269,17 @@ embedding_col = find_column([
     "Embeddings",
     "Embedding Vector",
     "OpenAI Embedding",
-    "Extract embeddings from page content",  # häufige Export-Bezeichnung
+    "Extract embeddings from page content",
 ], df.columns)
-
-# 2) NEU: Fuzzy-Match per Spaltenname
 if embedding_col is None:
     for c in df.columns:
         colname = str(c).lower()
         if ("embedding" in colname) or ("embed" in colname) or ("vector" in colname):
             embedding_col = c
             break
-
-# 3) Fallback: heuristische Inhalts-Erkennung
 if embedding_col is None:
     embedding_col = autodetect_embedding_column(df)
 
-# Falls URL oder Embedding weiterhin fehlen: aussagekräftige Fehlermeldung
 if url_col is None or embedding_col is None:
     st.error(
         "❌ URL- oder Embedding-Spalte nicht gefunden.\n\n"
@@ -307,7 +288,6 @@ if url_col is None or embedding_col is None:
     )
     st.stop()
 
-# Parse/normalize embeddings
 with st.spinner("Verarbeite Embeddings…"):
     df["embedding_vector"] = df[embedding_col].apply(parse_embedding)
     df_valid = df[df["embedding_vector"].apply(lambda x: isinstance(x, list) and len(x) > 0)].copy()
@@ -320,18 +300,16 @@ if len(df_valid) < 5:
 embedding_matrix = np.array(df_valid["embedding_vector"].tolist())
 st.caption(f"✅ Gültige Embeddings: {len(df_valid)} · Vektor-Dim: {embedding_matrix.shape[1]}")
 
-# Optional: read GSC file
+# Optional: Performance-/Metrik-Datei einlesen + numerische Kandidaten sammeln
 perf_df = None
 perf_url_col = clicks_col = impressions_col = None
-if gsc_file is not None:
+perf_metric_candidates = []
+if perf_file is not None:
     try:
-        perf_df = robust_read_table(gsc_file)
-        st.caption(f"Columns detected (GSC-Datei): {list(perf_df.columns)}")
+        perf_df = robust_read_table(perf_file)
+        st.caption(f"Columns detected (Performance-Datei): {list(perf_df.columns)}")
 
-        # URL-Spalte im GSC-Dokument
         perf_url_col = find_column(URL_CANDIDATES_BASE + URL_CANDIDATES_GSC_EXTRA, perf_df.columns)
-
-        # Fuzzy-Fallback auch für GSC
         if perf_url_col is None:
             for c in perf_df.columns:
                 n = str(c).lower().replace("-", " ")
@@ -339,7 +317,6 @@ if gsc_file is not None:
                     perf_url_col = c
                     break
 
-        # Klicks/Impressions
         for c in perf_df.columns:
             name = str(c).strip().lower()
             if clicks_col is None and ("klick" in name or "click" in name):
@@ -348,34 +325,55 @@ if gsc_file is not None:
                 impressions_col = c
 
         if perf_url_col is None:
-            st.warning("⚠️ Konnte URL-Spalte in der GSC-Datei nicht erkennen – Bubbles werden nicht nach GSC-Metriken skaliert.")
+            st.warning("⚠️ Konnte URL-Spalte in der Performance-/Metrik-Datei nicht erkennen – Bubbles werden nicht skaliert.")
             perf_df = None
+        else:
+            for c in perf_df.columns:
+                if c == perf_url_col:
+                    continue
+                s_num = to_numeric_series(perf_df[c])
+                valid_ratio = float(s_num.notna().mean()) if len(s_num) else 0.0
+                if valid_ratio >= 0.30 and s_num.nunique(dropna=True) > 1:
+                    perf_metric_candidates.append(c)
+
+            def sort_key(x):
+                xl = str(x).lower()
+                if clicks_col and x == clicks_col:
+                    return (0, x)
+                if impressions_col and x == impressions_col:
+                    return (1, x)
+                if any(k in xl for k in ["click", "klick"]):
+                    return (2, x)
+                if "impress" in xl:
+                    return (3, x)
+                return (4, x)
+
+            perf_metric_candidates = sorted(set(perf_metric_candidates), key=sort_key)
+
     except Exception as e:
-        st.warning(f"GSC-Datei konnte nicht verarbeitet werden: {e}")
+        st.warning(f"Performance-/Metrik-Datei konnte nicht verarbeitet werden: {e}")
         perf_df = None
+        perf_metric_candidates = []
 
 # =============================
-# Sidebar Controls (Look & Feel wie ONE Redirector)
+# Sidebar Controls
 # =============================
 st.sidebar.header("Einstellungen")
 cluster_method = st.sidebar.selectbox(
     "Clustermethode",
     ["K-Means", "Segments", "DBSCAN (Cosinus)"],
-    help="K-Means: feste Clusterzahl • Segments: nimmt Segment-Spalte z.B. aus Screaming Frog Crawl • DBSCAN: dichtebasiert (Cosinus)",
+    help="K-Means: feste Clusterzahl • Segments: nimmt Segment-Spalte z. B. aus Screaming Frog Crawl • DBSCAN: dichtebasiert (Cosinus)",
 )
 
 cluster_k = st.sidebar.slider(
     "Cluster (nur K-Means)",
-    min_value=2,
-    max_value=20,
-    value=8,
-    step=1,
-    help="Legt fest, in wie viele Gruppen (Cluster) die Punkte bei der K-Means-Methode unterteilt werden. "
-         "Eine höhere Zahl erzeugt kleinere, spezialisiertere Gruppen; eine niedrigere Zahl erzeugt größere, "
-         "allgemeinere Cluster. Nur relevant, wenn ‚K-Means‘ gewählt ist."
+    min_value=2, max_value=20, value=8, step=1,
+    help=("Legt fest, in wie viele Gruppen (Cluster) die Punkte bei der K-Means-Methode unterteilt werden. "
+          "Eine höhere Zahl erzeugt kleinere, spezialisiertere Gruppen; eine niedrigere Zahl erzeugt größere, "
+          "allgemeinere Cluster. Nur relevant, wenn ‚K-Means‘ gewählt ist.")
 )
 
-# Darstellungsmethode (Abstand) – ehemals t-SNE-Metrik
+# Darstellungsmethode (Abstand)
 metric_label = st.sidebar.selectbox(
     "Darstellungsmethode (Abstand)",
     ["Euklidisch", "Cosinus"],
@@ -386,45 +384,93 @@ metric_label = st.sidebar.selectbox(
 )
 tsne_metric = "euclidean" if metric_label == "Euklidisch" else "cosine"
 
-# Size scaling options
+# Bubblegröße nach – dynamisch; Auto-Vorauswahl: Keine Skalierung
 size_options = ["Keine Skalierung"]
-if clicks_col:
-    size_options.append("Klicks")
-if impressions_col:
-    size_options.append("Impressionen")
+if perf_metric_candidates:
+    size_options += perf_metric_candidates
 
 size_by = st.sidebar.selectbox(
     "Bubblegröße nach",
     size_options,
-    help="Welche Metrik bestimmt die Blasengröße (Klicks/Impressionen)? 'Keine Skalierung' = konstant.",
+    index=0,
+    help=("Welche Spalte aus der Performance-/Metrik-Datei (z. B. GSC/SISTRIX/Ahrefs) bestimmt die Blasengröße? "
+          "'Keine Skalierung' = konstant. Es werden nur numerische Spalten angeboten.")
 )
-size_method = st.sidebar.radio("Skalierung", ["Logarithmisch (log1p)", "Linear (Min–Max)"], index=0)
-size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2)
-size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10)
-clip_low = st.sidebar.slider("Clip low %", 0, 20, 1)
-clip_high = st.sidebar.slider("Clip high %", 80, 100, 95)
 
-bubble_scale = st.sidebar.slider("Bubble-Scale (global)", 0.20, 1.0, 0.55, 0.05)
-show_centroid = st.sidebar.checkbox("Centroid markieren", value=False)
-export_csv = st.sidebar.checkbox("Cosinus-CSV exportieren", value=False)
+# Skalierung + Hilfetext
+size_method = st.sidebar.radio(
+    "Skalierung",
+    ["Logarithmisch (log1p)", "Linear (Min–Max)"],
+    index=0,
+    help=("Bestimmt, wie die Blasengrößen aus der gewählten Metrik berechnet werden.\n\n"
+          "- Logarithmisch (log1p): komprimiert große Werteunterschiede, robust gegen Ausreißer; ideal bei schiefen Verteilungen.\n"
+          "- Linear (Min–Max): erhält Proportionen direkt; kann bei Ausreißern sehr große/kleine Bubbles erzeugen.\n\n"
+          "Tipp: Nutze ‚Clip low %‘/‚Clip high %‘, um Extremwerte abzuschneiden, und ‚Min-/Max-Größe‘ sowie ‚Bubble-Scale‘, "
+          "um die Darstellung feinzujustieren.\n\n"
+          "Hinweis: In der Praxis ist „Logarithmisch“ bei SEO/GSC-Daten fast immer die bessere Wahl (Long Tail, schiefe Verteilungen).")
+)
+
+# Min-/Max-Größe + Clip mit Hilfetexten
+size_min = st.sidebar.slider(
+    "Min-Größe (px)", 1, 12, 2,
+    help=("Kleinster Bubble-Durchmesser in Pixeln nach der Skalierung. "
+          "Verhindert, dass sehr kleine Werte ‚verschwinden‘.")
+)
+size_max = st.sidebar.slider(
+    "Max-Größe (px)", 6, 40, 10,
+    help=("Größter Bubble-Durchmesser in Pixeln nach der Skalierung. "
+          "Zu groß kann zu starker Überlappung führen.")
+)
+clip_low = st.sidebar.slider(
+    "Clip low %", 0, 20, 1,
+    help=("Schneidet den unteren Prozentbereich der Werte ab (z. B. 1 %). "
+          "Alles darunter wird auf die Schwelle gesetzt. "
+          "Hilft gegen Rauschen/Nullen am unteren Ende.")
+)
+clip_high = st.sidebar.slider(
+    "Clip high %", 80, 100, 95,
+    help=("Schneidet den oberen Prozentbereich der Werte ab (z. B. 95 %). "
+          "Begrenzt Ausreißer, damit sie die Darstellung nicht dominieren.")
+)
+
+# Centroid & CSV-Export
+show_centroid = st.sidebar.checkbox(
+    "Centroid markieren", value=False,
+    help="Markiert den Durchschnitt aller Embeddings als Stern. Nützlich, um die Mitte der Punktwolke zu sehen."
+)
+export_csv = st.sidebar.checkbox(
+    "Cosinus-CSV exportieren", value=False,
+    help="Exportiert alle Paar-Ähnlichkeiten (Cosinus) als CSV. Achtung: O(n²)-Paare bei vielen URLs!"
+)
+
+# Bubble-Scale nur anzeigen, wenn skaliert wird und Performance-Datei vorhanden ist; sonst 1.0
+if perf_df is not None and (size_by != "Keine Skalierung"):
+    bubble_scale = st.sidebar.slider(
+        "Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05,
+        help=("Globaler Zoomfaktor für die Blasengrößen: multipliziert alle Durchmesser nach der Berechnung "
+              "(Min/Max, Clip, Log/Linear). Praktisch zum schnellen Feinjustieren, ohne Min/Max zu ändern.")
+    )
+else:
+    bubble_scale = 1.0  # Standard: kein globales Upscaling/Downscaling
 
 bg_color = st.sidebar.color_picker("Hintergrundfarbe", value="#FFFFFF")
 search_q = st.sidebar.text_input("🔍 URL-Suche (Teilstring)")
 
-recalc = st.sidebar.button("Let's Go", type="primary")
+recalc = st.sidebar.button("Let's Go / Refresh", type="primary")
 
 # =============================
 # Processing & Visualization
 # =============================
 
 def build_plot():
-    # Merge GSC metrics
     merged = df_valid.copy()
+
+    # Merge Performance-Metriken (alle Kandidaten-Spalten)
     if isinstance(perf_df, pd.DataFrame) and perf_url_col:
         merged["__join"] = merged[url_col].apply(normalize_url)
         perf_local = perf_df.copy()
         perf_local["__join"] = perf_local[perf_url_col].apply(normalize_url)
-        keep_cols = ["__join"] + [c for c in [clicks_col, impressions_col] if c and c in perf_local.columns]
+        keep_cols = ["__join"] + list(perf_metric_candidates)
         perf_keep = perf_local[keep_cols].drop_duplicates("__join")
         merged = merged.merge(perf_keep, on="__join", how="left")
         merged.drop(columns=["__join"], inplace=True, errors="ignore")
@@ -449,12 +495,7 @@ def build_plot():
 
     # Cluster
     method = cluster_method
-
-    # --- Segment/Cluster-Spalte robust erkennen ---
-    # 1) Exakte Kandidaten (case-insensitive via find_column)
     segment_col = find_column(["Segmente", "Segment", "Segments", "Cluster"], df.columns)
-
-    # 2) Fuzzy: Namen, die "segment" oder "cluster" enthalten (Bindestriche/Underscores egal)
     if segment_col is None:
         for c in df.columns:
             n = str(c).lower().replace("-", " ").replace("_", " ")
@@ -466,47 +507,44 @@ def build_plot():
     if method == "K-Means":
         kmeans = KMeans(n_clusters=cluster_k, random_state=42)
         merged["Cluster"] = kmeans.fit_predict(embedding_matrix).astype(str)
-
     elif method == "DBSCAN (Cosinus)":
         cos_dist = cosine_distances(embedding_matrix)
         dbscan = DBSCAN(eps=0.3, min_samples=5, metric="precomputed")
         merged["Cluster"] = dbscan.fit_predict(cos_dist).astype(str)
-
     elif method == "Segments":
         if segment_col:
             merged["Cluster"] = merged[segment_col].fillna("Unbekannt").astype(str)
         else:
             st.warning("⚠️ Keine Segment-/Cluster-Spalte gefunden – falle zurück auf 'Kein Segment'.")
             merged["Cluster"] = "Kein Segment"
-
     else:
         merged["Cluster"] = "Kein Segment"
 
-    # Suche
+    # Suche/Highlight
     merged["Highlight"] = False
     q = (search_q or "").strip().lower()
     if q:
         merged["Highlight"] = merged[url_col].astype(str).str.lower().str.contains(q, na=False)
         st.caption(f"✨ {int(merged['Highlight'].sum())} Treffer für „{q}“")
 
-    # Bubble sizes (pixel diameter)
+    # Bubblegrößen
     scaled = False
+    metric_col = None
     if size_by != "Keine Skalierung":
-        metric_col = clicks_col if size_by == "Klicks" else impressions_col
-        if metric_col and metric_col in merged.columns:
-            mth = "log" if size_method.startswith("Log") else "linear"
-            merged["__marker_size"] = scale_sizes(
-                merged[metric_col],
-                method=mth,
-                size_min=size_min,
-                size_max=size_max,
-                clip_low=clip_low,
-                clip_high=clip_high,
-            )
-            scaled = True
-        else:
-            st.warning("⚠️ Gewählte Metrik nicht gefunden – konstante Bubble-Größe.")
-    if not scaled:
+        metric_col = size_by
+
+    if metric_col and metric_col in merged.columns:
+        mth = "log" if size_method.startswith("Log") else "linear"
+        merged["__marker_size"] = scale_sizes(
+            merged[metric_col],
+            method=mth,
+            size_min=size_min,
+            size_max=size_max,
+            clip_low=clip_low,
+            clip_high=clip_high,
+        )
+        scaled = True
+    else:
         merged["__marker_size"] = float(size_min)
 
     shrink = float(bubble_scale)
@@ -516,12 +554,11 @@ def build_plot():
         merged["__marker_px"] = max(1, int(size_min * shrink))
 
     # Plot
-    title = "🔍 t-SNE der Seiten-Embeddings (mit GSC-Skalierung)" if scaled else "🔍 t-SNE der Seiten-Embeddings"
+    title = "🔍 t-SNE der Seiten-Embeddings (mit Skalierung)" if scaled else "🔍 t-SNE der Seiten-Embeddings"
     hover_cols = {url_col: True, "Cluster": True}
-    if clicks_col and clicks_col in merged.columns:
-        hover_cols[clicks_col] = True
-    if impressions_col and impressions_col in merged.columns:
-        hover_cols[impressions_col] = True
+    for extra in {metric_col, clicks_col, impressions_col}:
+        if extra and extra in merged.columns:
+            hover_cols[extra] = True
 
     fig = px.scatter(
         merged,
@@ -533,7 +570,7 @@ def build_plot():
         title=title,
     )
 
-    # Assign exact per-point pixel sizes per trace
+    # Markergrößen je Trace setzen
     for tr in fig.data:
         mask = (merged["Cluster"].astype(str) == tr.name)
         sizes = merged.loc[mask, "__marker_px"].tolist()
@@ -543,12 +580,12 @@ def build_plot():
     if use_centroid:
         cx, cy = tsne_result[len(embedding_matrix), 0], tsne_result[len(embedding_matrix), 1]
         centroid_trace = px.scatter(x=[cx], y=[cy]).update_traces(
-            marker=dict(symbol="star", size=14, color="red"),  # line optional
+            marker=dict(symbol="star", size=14, color="red"),
             name="Centroid",
         )
         fig.add_trace(centroid_trace.data[0])
 
-    # Highlight layer
+    # Highlight-Layer
     if merged["Highlight"].any():
         hi = merged[merged["Highlight"]]
         highlight_trace = px.scatter(hi, x="tsne_x", y="tsne_y", hover_data={url_col: True}).update_traces(
@@ -598,7 +635,7 @@ if recalc:
                                 {
                                     "URL_A": url_list[i],
                                     "URL_B": url_list[j],
-                                    "Cosinus_Ähnlichkeit": float(sim_matrix[i, j]),
+                                    "Cosinus-Ähnlichkeit": float(sim_matrix[i, j]),
                                 }
                             )
                     sim_df = pd.DataFrame(pairs)
@@ -610,4 +647,4 @@ if recalc:
                         mime="text/csv",
                     )
 else:
-    st.info("Wähle Einstellungen in der Sidebar und klicke auf **Let's Go**.")
+    st.info("Wähle Einstellungen in der Sidebar und klicke auf **Let's Go / Refresh**.")
