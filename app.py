@@ -66,7 +66,7 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
     st.markdown("""
 <div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
   <strong>❗WICHTIG:</strong> Achte darauf, dass deine CSV echte Spaltentrenner nutzt (z. B. Tab/Komma) und <em>nicht</em> als Ein-Spalten-Datei vorliegt – das passiert bei Screaming-Frog-Exporten schnell. <br>
-  Gegebenenfalls ist vor dem Upload noch eine kurze Anpassung der <strong>Input-Dateien</strong> nötig.
+  Gegebenenfalls ist vor dem Upload noch eine kurze Anpassung der <strong>Input-Dateien</strong> notwendig.
 </div>
 """, unsafe_allow_html=True)
 
