@@ -10,22 +10,75 @@ from sklearn.manifold import TSNE
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
 import plotly.express as px
-import plotly.graph_objects as go  # NEU: für graue Basisschicht & präzise Markersteuerung
+import plotly.graph_objects as go  # für graue Basisschicht & präzise Markersteuerung
 
 # =============================
 # Page setup & Branding
 # =============================
 st.set_page_config(page_title="ONE Content-Cluster-Visualizer", layout="wide")
 st.image("https://onebeyondsearch.com/img/ONE_beyond_search%C3%94%C3%87%C3%B4gradient%20%282%29.png", width=250)
-st.title("ONE Content-Cluster-Visualizer – Domains visuell analysieren")
+st.title("ONE Content-Cluster-Visualizer")
 
 st.markdown("""
 <div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 0.9em; max-width: 600px; margin-bottom: 1.5em; line-height: 1.5;">
   Entwickelt von <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">Daniel Kremer</a> von <a href="https://onebeyondsearch.com/" target="_blank">ONE Beyond Search</a> &nbsp;|&nbsp;
-  Folge mir auf <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">LinkedIn</a>
+  Folge mir auf <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">LinkedIn für mehr SEO-Insights, Tool-Updates und -Tipps.</a>
 </div>
 <hr>
 """, unsafe_allow_html=True)
+
+# >>> Download-Buttons rot stylen <<<
+st.markdown("""
+<style>
+div.stDownloadButton > button {
+    background-color: #e60023 !important;
+    color: #ffffff !important;
+    border: 1px solid #990014 !important;
+    border-radius: 8px !important;
+    font-weight: 700 !important;
+    box-shadow: 0 2px 6px rgba(230,0,35,0.25) !important;
+}
+div.stDownloadButton > button:hover {
+    background-color: #cc001f !important;
+    border-color: #7a0010 !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# =============================
+# Hilfe (Variante A, kompakt) – im Expander
+# =============================
+with st.expander("❓ Hilfe – Was macht der ONE Content-Cluster-Visualizer?", expanded=False):
+    st.markdown("""
+## Was macht der ONE Content-Cluster-Visualizer?
+
+Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt dir,
+**Cluster zu bilden**, **Seiten zu suchen/markieren** und **für SEO-Audits relevante Listen zu exportieren**.
+
+### 🔄 Input
+- **Pflicht:** *Embedding-Datei* (CSV/Excel) mit **URLs** und **Embedding-Spalte**
+  ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen clustern zu können – Tipp: im Screaming Frog Segemente beispielsweise anhand der URL-/Verzeichnisstruktur definieren) 
+- **Optional:** *URL-Performance--Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs)  
+  ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden.  
+- 
+
+### ⚙️ Wie funktioniert’s?
+- **t-SNE** projiziert hochdimensionale Embeddings auf 2D, um **Nachbarschaften** sichtbar zu machen.
+- **Clustering:** *K-Means* (feste k; Anzahl der Cluster wählbar), *DBSCAN* (dichtebasiert, Cosinus-Distanz)oder vorhandene *Segments*-Spalte nutzen .    
+- **Abstände:** *Euklidisch* misst Luftlinie; *Cosinus* misst **Winkel/Ähnlichkeit** der Vektoren.  
+- **Bubble-Größe:** nach beliebiger **numerischer KPI** aus der Performance-Datei darstellbar
+- **Suche:** interaktive **URL-Suche** – Treffer werden farbig markiert, restliche Bubbles werden ausgegraut  
+- **Centroid:** thematischen **Schwerpunkt** markieren (roter Stern)
+
+### 📤 Output (Ergebnisse)
+- **Interaktives t-SNE-Chart** (HTML-Export möglich)  
+- **CSV-Exports (optional):**  
+  1) **Semantisch ähnliche Paare** (mit Cosinus-Score,Cosinus-Similarity ≥ Schwellenwert), Schwellenwert frei definierbar)  
+  2) **Low-Relevance-URLs** (Cosinus-Similarity zum Centroid < Schwellwert), um thematische Ausreißer-URLs "schwarz auf weiß" vorliegen zu haben
+
+> 💡 **Komische Ergebnisse?** Oft liegt es an der **Embedding-Erzeugung**.  
+> **Genauigkeit ist entscheidend** – Details [HIER](https://www.linkedin.com/posts/daniel-kremer-b38176264_vektor-embedding-analyse-klingt-smart-wird-activity-7359197501897269249-eLmI?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY)
+""")
 
 # =============================
 # Utilities
@@ -35,7 +88,6 @@ def _cleanup_headers(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.columns = [str(c).replace("\ufeff", "").strip() for c in df.columns]
     return df
-
 
 def robust_read_table(uploaded_file):
     """
@@ -73,7 +125,6 @@ def robust_read_table(uploaded_file):
         try:
             df = _read_csv(raw, sep=None, engine="python", encoding=enc)
             df = _cleanup_headers(df)
-            # --- HARTE SICHERUNG ---
             if df.shape[1] == 1:
                 header = str(df.columns[0])
                 first_row = str(df.iloc[0, 0]) if len(df) else ""
@@ -102,7 +153,6 @@ def robust_read_table(uploaded_file):
 
     raise ValueError("❌ Datei konnte nicht eingelesen werden (Encoding/Trennzeichen unbekannt).")
 
-
 def parse_embedding(value):
     try:
         if pd.isna(value):
@@ -119,7 +169,6 @@ def parse_embedding(value):
     except Exception:
         return None
 
-
 def normalize_embedding_lengths(vectors: pd.Series):
     lengths = vectors.apply(lambda x: len(x) if isinstance(x, list) else 0)
     max_len = int(lengths.max()) if len(lengths) else 0
@@ -132,7 +181,6 @@ def normalize_embedding_lengths(vectors: pd.Series):
         return emb[:max_len]
 
     return vectors.apply(pad_or_trim), max_len
-
 
 def normalize_url(u: str) -> str:
     if pd.isna(u):
@@ -152,7 +200,6 @@ def normalize_url(u: str) -> str:
             s = s[:-1]
         return s.lower()
 
-
 def to_numeric_series(series: pd.Series) -> pd.Series:
     s = (
         series.astype(str)
@@ -163,29 +210,23 @@ def to_numeric_series(series: pd.Series) -> pd.Series:
     )
     return pd.to_numeric(s, errors="coerce")
 
-
 def scale_sizes(series, method="log", size_min=2, size_max=10, clip_low=1, clip_high=95):
     s = to_numeric_series(series).fillna(0)
     if len(s) == 0:
         return pd.Series([], dtype=float)
-
     lo = np.percentile(s, clip_low)
     hi = np.percentile(s, clip_high)
     if hi <= lo:
         lo, hi = s.min(), s.max()
     s = s.clip(lo, hi)
-
     if method == "log":
         s = np.log1p(s)
-
     mn, mx = s.min(), s.max()
     if mx == mn:
         return pd.Series(np.full(len(s), (size_min + size_max) / 2.0))
-
     s_norm = (s - mn) / (mx - mn)
     diam = size_min + s_norm * (size_max - size_min)
     return pd.Series(diam)
-
 
 def find_column(possible_names, columns):
     for name in possible_names:
@@ -197,7 +238,6 @@ def find_column(possible_names, columns):
         if n in lower:
             return lower[n]
     return None
-
 
 def autodetect_embedding_column(df: pd.DataFrame, sample=50):
     """Falls die Kandidatenliste nichts findet, erkennen wir Embedding-Spalten heuristisch."""
@@ -220,8 +260,42 @@ def autodetect_embedding_column(df: pd.DataFrame, sample=50):
             pass
     return None
 
+# --- Centroid-Logik: Auto/Standard/Unit-Norm ---
+def norm_stats(X: np.ndarray):
+    norms = np.linalg.norm(X, axis=1)
+    p10, p90 = np.percentile(norms, [10, 90])
+    mean, std = norms.mean(), norms.std()
+    cv = std / (mean + 1e-12)
+    ratio = (p90 + 1e-12) / (p10 + 1e-12)
+    if ratio < 1.5 and cv < 0.15:
+        level = "ok"
+    elif ratio < 1.8 and cv < 0.25:
+        level = "warn"
+    else:
+        level = "high"
+    return {"cv": cv, "ratio": ratio, "level": level}
+
+def compute_centroid(X: np.ndarray, mode: str):
+    # returns (centroid_vector_1d, effective_mode_str)
+    if mode.startswith("Auto"):
+        stats = norm_stats(X)
+        eff = "Unit-Norm" if (stats["level"] in ("warn", "high")) else "Standard"
+        c, _ = compute_centroid(X, eff)
+        return c, eff
+    if mode.startswith("Unit"):
+        norms = np.linalg.norm(X, axis=1, keepdims=True)
+        Xn = np.divide(X, np.where(norms == 0, 1.0, norms))
+        Xn[~np.isfinite(Xn)] = 0.0
+        c = Xn.mean(axis=0)
+        cn = np.linalg.norm(c)
+        if cn > 0:
+            c = c / cn
+        return c, "Unit-Norm"
+    # Standard
+    return X.mean(axis=0), "Standard"
+
 # -------------------------------------------------
-# URL-Kandidaten (für beide Dateien wiederverwendet)
+# URL-Kandidaten
 # -------------------------------------------------
 URL_CANDIDATES_BASE = [
     "URL", "Page", "Pages",
@@ -291,7 +365,6 @@ if url_col is None or embedding_col is None:
 
 # ---- Segment/Cluster-Spalte vorab erkennen (für UI) ----
 SEGMENT_NAME_CANDIDATES = ["Segmente", "Segment", "Segments", "Cluster"]
-
 def detect_segment_col(df_input):
     seg = find_column(SEGMENT_NAME_CANDIDATES, df_input.columns)
     if seg is None:
@@ -301,7 +374,6 @@ def detect_segment_col(df_input):
             if any(tok in tokens for tok in ["segment", "segments", "cluster"]):
                 return c
     return seg
-
 segment_col_global = detect_segment_col(df)
 
 with st.spinner("Verarbeite Embeddings…"):
@@ -442,12 +514,12 @@ size_method = st.sidebar.radio(
     help=("Bestimmt, wie die Blasengrößen aus der gewählten Metrik berechnet werden.\n\n"
           "- Logarithmisch (log1p): komprimiert große Werteunterschiede, robust gegen Ausreißer; ideal bei schiefen Verteilungen.\n"
           "- Linear (Min–Max): erhält Proportionen direkt; kann bei Ausreißern sehr große/kleine Bubbles erzeugen.\n\n"
-          "Tipp: Nutze ‚Clip low %‘/‚Clip high %‘, um Extremwerte abzuschneiden, und ‚Min-/Max-Größe‘ sowie ‚Bubble-Scale‘, "
+          "Tipp: Nutze ‚Perzentil-Grenze unten/oben (%)‘, um Extremwerte abzuschneiden, und ‚Min-/Max-Größe‘ sowie ‚Bubble-Scale‘, "
           "um die Darstellung feinzujustieren.\n\n"
           "Hinweis: In der Praxis ist „Logarithmisch“ bei SEO/GSC-Daten fast immer die bessere Wahl (Long Tail, schiefe Verteilungen).")
 )
 
-# Min-/Max-Größe + Clip mit Hilfetexten
+# Min-/Max-Größe + Perzentil-Grenzen
 size_min = st.sidebar.slider(
     "Min-Größe (px)", 1, 12, 2,
     help=("Kleinster Bubble-Durchmesser in Pixeln nach der Skalierung. "
@@ -459,46 +531,70 @@ size_max = st.sidebar.slider(
           "Zu groß kann zu starker Überlappung führen.")
 )
 clip_low = st.sidebar.slider(
-    "Clip low %", 0, 20, 1,
-    help=("Schneidet den unteren Prozentbereich der Werte ab (z. B. 1 %). "
-          "Alles darunter wird auf die Schwelle gesetzt. "
-          "Hilft gegen Rauschen/Nullen am unteren Ende.")
+    "Perzentil-Grenze unten (%)", 0, 20, 1,
+    help=("Hebt sehr kleine Werte auf diese Untergrenze an (Perzentil). So „verschwinden“ kleine Bubbles nicht. "
+          "Wirkt nur auf die Bubble-Größen, nicht auf t-SNE, Cluster oder Exporte.")
 )
 clip_high = st.sidebar.slider(
-    "Clip high %", 80, 100, 95,
-    help=("Schneidet den oberen Prozentbereich der Werte ab (z. B. 95 %). "
-          "Begrenzt Ausreißer, damit sie die Darstellung nicht dominieren.")
+    "Perzentil-Grenze oben (%)", 80, 100, 95,
+    help=("Begrenzt sehr große Werte auf diese Obergrenze (Perzentil), damit einzelne Riesen-Bubbles die Darstellung nicht dominieren. "
+          "Wirkt nur auf die Bubble-Größen, nicht auf t-SNE, Cluster oder Exporte.")
 )
 
-# Centroid & CSV-Export
+# Centroid-Optionen
 show_centroid = st.sidebar.checkbox(
     "Centroid markieren", value=False,
     help="Markiert den thematischen Schwerpunkt der analysierten URLs (Centroid), berechnet als Durchschnitt aller Embeddings."
 )
+with st.sidebar.expander("Erweitert: Centroid", expanded=False):
+    centroid_mode = st.radio(
+        "Centroid-Modus",
+        ["Auto (empfohlen)", "Standard", "Unit-Norm"],
+        index=0,
+        help=("Wie der thematische Schwerpunkt (Centroid) berechnet wird.\n"
+              "• Auto: nutzt Standard, wechselt bei hoher Normstreuung automatisch zu Unit-Norm.\n"
+              "• Standard: arithmetischer Mittelwert der Vektoren.\n"
+              "• Unit-Norm: erst jeden Vektor auf Länge 1 normieren, dann mitteln (richtungsbasiert).")
+    )
 centroid_size = st.sidebar.slider(
     "Centroid-Sterngröße (px)", 10, 40, 22, 1,
     help="Größe des roten Sterns, der den Centroid visualisiert.",
     disabled=not show_centroid
 )
 
+# Bubble-Scale und Hintergrundfarbe (vor Export-Überschrift)
+if perf_df is not None and (size_by != "Keine Skalierung"):
+    bubble_scale = st.sidebar.slider(
+        "Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05,
+        help=("Globaler Zoomfaktor für die Blasengrößen: multipliziert alle Durchmesser nach der Berechnung "
+              "(Min/Max, Perzentil-Grenzen, Log/Linear). Praktisch zum schnellen Feinjustieren, ohne Min/Max zu ändern.")
+    )
+else:
+    bubble_scale = 1.0  # Standard: kein globales Upscaling/Downscaling
+
+bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="#FFFFFF")
+
+# Kleine Section-Überschrift für Exporte
+st.sidebar.markdown("**Weitere Exportmöglichkeiten**")
+
 # Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
 export_csv = st.sidebar.checkbox(
-    "Cosinus-CSV exportieren", value=False,
-    help="Exportiert Paar-Ähnlichkeiten (Cosinus) als CSV. Achtung: O(n²)-Paare ohne Filter!"
+    "Semantisch ähnliche URLs exportieren", value=False,
+    help="Export semantisch ähnlicher URL-Paare mit einer Cosinus Similarity über dem gewählten Schwellenwert als CSV"
 )
 sim_threshold = st.sidebar.slider(
     "Ähnlichkeitsschwelle (Cosinus)",
     min_value=0.00, max_value=1.00, value=0.00, step=0.01,
-    help=("Nur Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert werden exportiert. "
+    help=("Nur URL-Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert werden exportiert. "
           "1.00 = sehr ähnlich/identisch, 0.00 = keine Ähnlichkeit."),
     disabled=not export_csv
 )
 
 # Export 2: Low-Relevance (Centroid-Ähnlichkeit) mit Schwellwert
 export_lowrel_csv = st.sidebar.checkbox(
-    "Low-Relevance-CSV exportieren", value=False,
-    help=("Identifizierung von Low-Relevance URLs (thematische Ausreißer-URLs). "
-          "Z. B. alle Seiten unter 0,4 Ähnlichkeit zum Durchschnitt können als Ausreißer bezeichnet werden. "
+    "Low-Relevance-URLs exportieren", value=False,
+    help=("Low-Relevance URLs (thematische Ausreißer-URLs) als CSV exportieren. "
+          "Beispielsweise alle URLs mit einer Cosinus Similarity von unter 0,4 zum Centroid (Durchschnitt aller Embeddings). "
           "Schwellenwert ist flexibel anpassbar.")
 )
 lowrel_threshold = st.sidebar.slider(
@@ -511,7 +607,7 @@ lowrel_threshold = st.sidebar.slider(
 
 # Export-Limits (konfigurierbar)
 unlimited_export = st.sidebar.checkbox(
-    "Kein Limit für Export (riskant)", value=False,
+    "Kein Limit für Export", value=False,
     help="Hebt die Zeilenbegrenzung auf. Vorsicht: Sehr große CSVs können Browser/Speicher überlasten."
 )
 if not unlimited_export:
@@ -522,18 +618,6 @@ if not unlimited_export:
 else:
     max_export_rows = None
 
-# Bubble-Scale nur anzeigen, wenn skaliert wird und Performance-Datei vorhanden ist; sonst 1.0
-if perf_df is not None and (size_by != "Keine Skalierung"):
-    bubble_scale = st.sidebar.slider(
-        "Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05,
-        help=("Globaler Zoomfaktor für die Blasengrößen: multipliziert alle Durchmesser nach der Berechnung "
-              "(Min/Max, Clip, Log/Linear). Praktisch zum schnellen Feinjustieren, ohne Min/Max zu ändern.")
-    )
-else:
-    bubble_scale = 1.0  # Standard: kein globales Upscaling/Downscaling
-
-bg_color = st.sidebar.color_picker("Hintergrundfarbe", value="#FFFFFF")
-
 recalc = st.sidebar.button("Let's Go / Refresh", type="primary")
 
 # =============================
@@ -542,7 +626,6 @@ recalc = st.sidebar.button("Let's Go / Refresh", type="primary")
 
 def _build_hover_cols(merged, metric_col):
     h = {url_col: True, "Cluster": True}
-    # ggf. Extra-Spalten anzeigen
     for extra in {metric_col}:
         if extra and extra in merged.columns:
             h[extra] = True
@@ -557,21 +640,21 @@ def build_data_and_cache():
         merged["__join"] = merged[url_col].apply(normalize_url)
         perf_local = perf_df.copy()
         perf_local["__join"] = perf_local[perf_url_col].apply(normalize_url)
-        keep_cols = ["__join"]  # wir fügen dynamische Metrikspalten erst beim Skalieren/Export hinzu (optional)
-        # wenn du ALLE perf_metric_candidates immer sehen willst, nimm: keep_cols += list(perf_metric_candidates)
+        keep_cols = ["__join"]
         perf_keep = perf_local[keep_cols + list(set(perf_metric_candidates))].drop_duplicates("__join") \
             if perf_metric_candidates else perf_local[keep_cols].drop_duplicates("__join")
         merged = merged.merge(perf_keep, on="__join", how="left")
         merged.drop(columns=["__join"], inplace=True, errors="ignore")
 
-    # t-SNE
+    # t-SNE (+ optionaler Centroid-Punkt)
     perplexity = int(min(30, max(5, len(merged) // 3)))
     X = np.array(merged["embedding_vector"].tolist())
     use_centroid_flag = bool(show_centroid)
     if use_centroid_flag:
-        centroid_vec = np.mean(X, axis=0, keepdims=True)
-        X_tsne = np.vstack([X, centroid_vec])
+        centroid_vec, centroid_mode_eff = compute_centroid(X, centroid_mode)
+        X_tsne = np.vstack([X, centroid_vec[None, :]])
     else:
+        centroid_mode_eff = None
         X_tsne = X
 
     tsne = TSNE(n_components=2, metric=tsne_metric, random_state=42, perplexity=perplexity)
@@ -635,12 +718,14 @@ def build_data_and_cache():
     st.session_state["centroid_in_tsne"] = use_centroid_flag
     if use_centroid_flag:
         st.session_state["centroid_xy"] = (tsne_result[len(X), 0], tsne_result[len(X), 1])
+        st.session_state["centroid_mode_eff"] = centroid_mode_eff
     else:
         st.session_state["centroid_xy"] = None
-
+        st.session_state["centroid_mode_eff"] = None
 
 def render_plot_from_cache(q: str):
-    """Zeichnet den Plot aus dem Cache neu; bei Suche: Rest grau, Treffer farbig."""
+    """Zeichnet den Plot aus dem Cache neu; bei Suche: Rest grau, Treffer farbig.
+       In der Legende: einheitliche Markergröße pro Cluster (Dummy-Legendentraces)."""
     merged = st.session_state.get("merged_cached")
     if merged is None:
         st.info("Bitte zuerst Einstellungen wählen und auf **Let's Go / Refresh** klicken.")
@@ -653,6 +738,7 @@ def render_plot_from_cache(q: str):
     url_c = st.session_state.get("url_col_cached", url_col)
     highlight_px = st.session_state.get("highlight_px_cached", 10)
     centroid_xy = st.session_state.get("centroid_xy", None)
+    centroid_mode_eff = st.session_state.get("centroid_mode_eff", None)
 
     q = (q or "").strip().lower()
 
@@ -660,7 +746,6 @@ def render_plot_from_cache(q: str):
         # --- Suchmodus: Basisschicht grau, nur Treffer farbig ---
         fig = go.Figure()
 
-        # Basisschicht (alle Punkte grau, Hover aus)
         fig.add_trace(go.Scatter(
             x=merged["tsne_x"], y=merged["tsne_y"], mode="markers", name="Alle",
             marker=dict(
@@ -673,11 +758,9 @@ def render_plot_from_cache(q: str):
             showlegend=False
         ))
 
-        # Treffer
         mask = merged[url_c].astype(str).str.lower().str.contains(q, na=False)
         if mask.any():
             hi = merged[mask]
-            # Hovertext zusammenbauen
             hover_texts = []
             for _, row in hi.iterrows():
                 extras = []
@@ -707,11 +790,34 @@ def render_plot_from_cache(q: str):
             template="plotly_white",
             title=title,
         )
-        # Größen je Trace setzen
+        # Größen je Trace setzen (echte Datentraces)
         for tr in fig.data:
             mask = (merged["Cluster"].astype(str) == tr.name)
             sizes = merged.loc[mask, "__marker_px"].tolist()
             tr.marker.update(size=sizes, sizemode="diameter", opacity=0.55, line=dict(width=0.5, color="white"))
+            tr.legendgroup = tr.name
+            tr.showlegend = False  # echten Datentrace in der Legende ausblenden
+
+        # Dummy-Legendentraces mit konstanter Markergröße hinzufügen
+        for tr in list(fig.data):
+            if tr.mode == "markers" and tr.legendgroup and tr.name:
+                color = tr.marker.color
+                if isinstance(color, (list, np.ndarray)) and len(color) > 0:
+                    color = color[0]
+                dummy = go.Scatter(
+                    x=[None], y=[None],
+                    mode="markers",
+                    name=tr.name,
+                    legendgroup=tr.legendgroup,
+                    showlegend=True,
+                    marker=dict(
+                        size=12,  # einheitliche Legenden-Größe
+                        color=color,
+                        line=dict(width=0.5, color="white")
+                    ),
+                    hoverinfo="skip"
+                )
+                fig.add_trace(dummy)
 
     # Centroid optional
     if centroid_xy is not None:
@@ -731,12 +837,15 @@ def render_plot_from_cache(q: str):
         showlegend=True,
         dragmode="zoom",
         hovermode="closest",
+        legend=dict(itemsizing="constant")
     )
 
     st.subheader("📈 Visualisierung")
+    if centroid_mode_eff:
+        st.caption(f"Centroid-Modus aktiv: {centroid_mode_eff}")
     st.plotly_chart(fig, use_container_width=True)
 
-    # Download des HTMLs
+    # Download HTML
     html_bytes = fig.to_html(include_plotlyjs="cdn").encode("utf-8")
     st.download_button(
         label="📥 Interaktive HTML-Datei herunterladen",
@@ -758,7 +867,6 @@ else:
 # =============================
 # Exporte (unabhängig von Suche!)
 # =============================
-# Hinweis: embedding_matrix basiert auf df_valid (unverändert)
 if export_csv:
     merged_cached = st.session_state.get("merged_cached")
     if merged_cached is not None:
@@ -769,7 +877,6 @@ if export_csv:
             thr = float(sim_threshold)
             pairs = []
             n = len(url_list)
-            # Warnung bei großem n und niedriger Schwelle
             est_pairs = n * (n - 1) // 2
             if unlimited_export and est_pairs > 2_000_000 and thr <= 0.2:
                 st.warning(f"Viele Paare erwartet (~{est_pairs:,}). Niedrige Schwelle + kein Limit kann sehr große CSVs erzeugen.")
@@ -802,8 +909,8 @@ if export_lowrel_csv:
     if merged_cached is not None:
         with st.spinner("Berechne Centroid-Ähnlichkeiten pro URL…"):
             X = np.array(merged_cached["embedding_vector"].tolist())
-            centroid_vec = np.mean(X, axis=0, keepdims=True)
-            centroid_sim = cosine_similarity(X, centroid_vec).ravel()
+            centroid_vec, centroid_mode_eff_export = compute_centroid(X, centroid_mode)
+            centroid_sim = cosine_similarity(X, centroid_vec[None, :]).ravel()
 
             low_thr = float(lowrel_threshold)
             export_df = pd.DataFrame({
@@ -816,12 +923,6 @@ if export_lowrel_csv:
 
             if size_by != "Keine Skalierung" and size_by in merged_cached.columns:
                 export_df[size_by] = merged_cached[size_by].values
-
-            # Optional: Klicks/Impressionen, falls vorhanden
-            # (Falls du diese immer mitmergen willst, kannst du oben im Merge-Block alle KPI-Spalten übernehmen.)
-            # for extra_col in [clicks_col, impressions_col]:
-            #     if extra_col and extra_col in merged_cached.columns:
-            #         export_df[extra_col] = merged_cached[extra_col].values
 
             export_df = export_df[export_df["Cosinus_Ähnlichkeit_zum_Centroid"] < low_thr].copy()
             export_df = export_df.sort_values("Cosinus_Ähnlichkeit_zum_Centroid", ascending=True)
