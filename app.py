@@ -77,10 +77,10 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
 """)
     st.markdown("""
 <div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
-  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong>.<br/>
-  <strong>Genauigkeit ist entscheidend</strong> – Details
+  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong>. Genauigkeit ist entscheidend – Details
   <a href="https://www.linkedin.com/posts/daniel-kremer-b38176264_vektor-embedding-analyse-klingt-smart-wird-activity-7359197501897269249-eLmI?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY"
-     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>.
+     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>. Ein <strong>Praxisbeispiel</strong> für die Arbeit mit dem Tool findet ihr <a href="https://www.linkedin.com/posts/daniel-kremer-b38176264_%F0%9D%90%85%F0%9D%90%A2%F0%9D%90%A7%F0%9D%90%A0%F0%9D%90%9E%F0%9D%90%AB-%F0%9D%90%B0%F0%9D%90%9E%F0%9D%90%A0-%F0%9D%90%AF%F0%9D%90%A8%F0%9D%90%A7-%F0%9D%90%82%F0%9D%90%A8%F0%9D%90%A7%F0%9D%90%AD%F0%9D%90%9E%F0%9D%90%A7%F0%9D%90%AD-%F0%9D%90%80%F0%9D%90%AE%F0%9D%90%9D%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%AC-activity-7361780015908171776-3Y-f?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY"
+     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>
 </div>
 """, unsafe_allow_html=True)
 
