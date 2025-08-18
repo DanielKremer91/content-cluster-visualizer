@@ -5,6 +5,7 @@ numpy==1.26.4
 
 # Machine Learning
 scikit-learn==1.4.2
+scipy==1.11.4       # <- neu: stellt Binärkompatibilität sicher
 
 # Visualization
 plotly==5.22.0
