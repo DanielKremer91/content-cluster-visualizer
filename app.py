@@ -48,7 +48,7 @@ div.stDownloadButton > button:hover {
 # =============================
 # Hilfe (Variante A, kompakt) – im Expander
 # =============================
-with st.expander("❓ Hilfe – Was macht der ONE Content-Cluster-Visualizer?", expanded=False):
+with st.expander("❓ Hilfe / Tool-Dokumentation", expanded=False):
     st.markdown("""
 ## Was macht der ONE Content-Cluster-Visualizer?
 
@@ -58,9 +58,8 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
 ### 🔄 Input
 - **Pflicht:** *Embedding-Datei* (CSV/Excel) mit **URLs** und **Embedding-Spalte**
   ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen clustern zu können – Tipp: im Screaming Frog Segemente beispielsweise anhand der URL-/Verzeichnisstruktur definieren) 
-- **Optional:** *URL-Performance--Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs)  
+- **Optional:** *URL-Performance-Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs)  
   ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden.  
-- 
 
 ### ⚙️ Wie funktioniert’s?
 - **t-SNE** projiziert hochdimensionale Embeddings auf 2D, um **Nachbarschaften** sichtbar zu machen.
