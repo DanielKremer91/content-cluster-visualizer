@@ -57,7 +57,7 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
 
 ### 🔄 Input
 - **Pflicht:** *Embedding-Datei* (CSV/Excel) mit **URLs** und **Embedding-Spalte**  
-  ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen clustern zu können – Tipp: im Screaming Frog **Segmente** z. B. anhand der URL-/Verzeichnisstruktur definieren) 
+  ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen clustern zu können – Tipp: im Screaming Frog **Segmente** z. B. anhand der URL-/Verzeichnisstruktur definieren und ausgegeben lassen) 
 - **Optional:** *URL-Performance-Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs etc.)  
   ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden. Das Tool erkennt die Spalten automatisch und bietet sie im Dropdown-Menü zur Auswahl an. 
 
