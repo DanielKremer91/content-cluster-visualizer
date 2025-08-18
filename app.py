@@ -940,14 +940,13 @@ if export_csv:
     if merged_cached is not None:
         with st.spinner("Berechne semantische Ähnlichkeiten…"):
             url_list = merged_cached[url_col].astype(str).tolist()
-            # FIX 2: Embeddings für Export aus dem Cache, nicht df_valid
+            # Embeddings für Export aus dem Cache (konsistent zur Reihenfolge im Plot)
             X_raw = np.array(merged_cached["embedding_vector"].tolist()).astype("float32")
             thr = float(sim_threshold)
             pairs = []
 
             if sim_method.startswith("sklearn"):
                 # --- EXAKT (O(N^2)) -----------------------------------------
-                # Achtung: Kann bei sehr großen N viel RAM/Time kosten.
                 sim_matrix = cosine_similarity(X_raw)
                 n = len(url_list)
                 est_pairs = n * (n - 1) // 2
@@ -971,28 +970,27 @@ if export_csv:
                             })
 
             else:
-                # --- FAISS (schnell, Top-N) ---------------------------------
+                # --- FAISS (alle Nachbarn; k = N) ---------------------------
                 if faiss is None:
                     st.error("FAISS ist nicht installiert (pip install faiss-cpu). Bitte installieren oder auf sklearn wechseln.")
                 else:
-                    # Für Cosine: L2-Normalisierung, dann Inner Product == Cosinus
                     X = X_raw.copy()
+                    # Für Cosine: L2-Norm -> Inner Product == Cosinus
                     faiss.normalize_L2(X)
 
                     d = X.shape[1]
-                    index = faiss.IndexFlatIP(d)   # exakte IP-Suche; für Approx ggf. IVF/HNSW nutzen
+                    index = faiss.IndexFlatIP(d)  # exakte IP-Suche
                     index.add(X)
 
                     n = len(url_list)
-                    k = int(min(n, max(2, faiss_topk)))
-                    sims, idxs = index.search(X, k)  # (n, k)
+                    # k=N: alle Nachbarn inkl. Selbsttreffer (Rang 0)
+                    sims, idxs = index.search(X, n)
 
-                    # Eindeutige, ungerichtete Paare erzeugen: i < j; keine Selbst-Paare
-                    seen = set()
+                    seen = set()  # (i,j) mit i<j, um Duplikate zu vermeiden
                     for i in range(n):
-                        for r in range(1, k):  # r=0 wäre i selbst (Score=1.0)
+                        for r in range(1, n):  # r=0 ist i selbst (Score=1.0)
                             j = int(idxs[i, r])
-                            if j < 0 or j >= n or j == i:
+                            if j == i or j < 0 or j >= n:
                                 continue
                             s = float(sims[i, r])
                             if s < thr:
@@ -1006,7 +1004,7 @@ if export_csv:
                                 "URL_A": url_list[a],
                                 "URL_B": url_list[b],
                                 "Cosinus_Ähnlichkeit": s,
-                                "Match-Typ": f"Similarity (FAISS) Top-{k-1}"
+                                "Match-Typ": "Similarity (FAISS, k=N)"
                             })
 
             if not pairs:
@@ -1031,6 +1029,7 @@ if export_csv:
                 )
     else:
         st.info("Für den Export bitte zuerst **Let's Go / Refresh** ausführen.")
+
 
 if export_lowrel_csv:
     merged_cached = st.session_state.get("merged_cached")
