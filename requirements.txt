@@ -1,6 +1,14 @@
-streamlit
-pandas
-numpy
-scikit-learn
-plotly
-openpyxl
+# Core
+streamlit==1.37.0
+pandas==2.2.2
+numpy==1.26.4
+
+# Machine Learning
+scikit-learn==1.4.2
+
+# Visualization
+plotly==5.22.0
+
+# Excel / File Support
+openpyxl==3.1.5
+xlrd==2.0.1
