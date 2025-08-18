@@ -11,6 +11,10 @@ from sklearn.cluster import KMeans, DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
 import plotly.express as px
 import plotly.graph_objects as go  # für graue Basisschicht & präzise Markersteuerung
+try:
+    import faiss  # pip install faiss-cpu
+except Exception as _faiss_err:
+    faiss = None
 
 # =============================
 # Page setup & Branding
@@ -594,6 +598,36 @@ bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="
 # Kleine Section-Überschrift für Exporte
 st.sidebar.markdown("**Weitere Exportmöglichkeiten**")
 
+# --- Methode für Ähnlichkeits-Export (mit ausführlichem Help-Text) ---
+sim_method = st.sidebar.radio(
+    "Berechnungsmethode (Ähnlichkeits-Export)",
+    ["sklearn (präzise)", "FAISS (schnell)"],
+    index=0,
+    help=(
+        "Wähle die Methode für den Export semantisch ähnlicher URL-Paare.\n\n"
+        "• sklearn (präzise): Exakte Cosinus-Ähnlichkeit via vollständiger Paar-Berechnung. "
+        "Empfehlung für kleinere bis mittlere Datensätze (grobe Faustregel: bis ~2–5k URLs).\n\n"
+        "• FAISS (schnell): Sehr schnelle Nachbarsuche – ideal für große Datensätze. "
+        "Für Cosinus-Ähnlichkeit werden die Embeddings L2-normalisiert; der Inner Product entspricht dann der Cosinus-Similarity. "
+        "Mit dem Top-N-Regler steuerst du, wie viele nächste Nachbarn pro URL geprüft werden.\n\n"
+        "Hinweis: Mit FAISS IndexFlatIP (ohne Approximation) sind die Ergebnisse praktisch identisch zu sklearn "
+        "(bis auf minimale Rundungsunterschiede). Bei Approx-Indizes (z. B. IVF/HNSW) können leichte Abweichungen auftreten, "
+        "dafür ist die Suche noch schneller."
+    )
+)
+
+# Nur relevant, wenn FAISS gewählt ist
+faiss_topk = st.sidebar.number_input(
+    "Top-N Nachbarn pro URL (nur FAISS)",
+    min_value=5, max_value=1000, value=50, step=5,
+    help=(
+        "Wie viele nächste Nachbarn je URL abgefragt werden. "
+        "Je höher dein Ähnlichkeits-Schwellwert, desto weniger Nachbarn sind nötig; "
+        "bei sehr niedrigem Schwellwert ggf. höher stellen."
+    ),
+    disabled=(sim_method != "FAISS (schnell)")
+)
+
 # Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
 export_csv = st.sidebar.checkbox(
     "Semantisch ähnliche URLs exportieren", value=False,
@@ -904,35 +938,95 @@ else:
 if export_csv:
     merged_cached = st.session_state.get("merged_cached")
     if merged_cached is not None:
-        with st.spinner("Berechne Cosinus-Ähnlichkeiten…"):
+        with st.spinner("Berechne semantische Ähnlichkeiten…"):
             url_list = merged_cached[url_col].astype(str).tolist()
-            sim_matrix = cosine_similarity(np.array(df_valid["embedding_vector"].tolist()))
-
+            # FIX 2: Embeddings für Export aus dem Cache, nicht df_valid
+            X_raw = np.array(merged_cached["embedding_vector"].tolist()).astype("float32")
             thr = float(sim_threshold)
             pairs = []
-            n = len(url_list)
-            est_pairs = n * (n - 1) // 2
-            if unlimited_export and est_pairs > 2_000_000 and thr <= 0.2:
-                st.warning(f"Viele Paare erwartet (~{est_pairs:,}). Niedrige Schwelle + kein Limit kann sehr große CSVs erzeugen.")
 
-            for i in range(n):
-                for j in range(i + 1, n):
-                    s = float(sim_matrix[i, j])
-                    if s >= thr:
-                        pairs.append({"URL_A": url_list[i], "URL_B": url_list[j], "Cosinus_Ähnlichkeit": s})
+            if sim_method.startswith("sklearn"):
+                # --- EXAKT (O(N^2)) -----------------------------------------
+                # Achtung: Kann bei sehr großen N viel RAM/Time kosten.
+                sim_matrix = cosine_similarity(X_raw)
+                n = len(url_list)
+                est_pairs = n * (n - 1) // 2
+                if unlimited_export and est_pairs > 2_000_000 and thr <= 0.2:
+                    st.warning(f"Viele Paare erwartet (~{est_pairs:,}). "
+                               f"Niedrige Schwelle + kein Limit kann sehr große CSVs erzeugen.")
+
+                # Nur obere Dreiecksmatrix (i<j) -> eindeutige Paare, keine Selbstpaare
+                for i in range(n):
+                    row = sim_matrix[i, i+1:]
+                    j_idx = np.where(row >= thr)[0]
+                    if len(j_idx):
+                        for off in j_idx:
+                            j = i + 1 + int(off)
+                            s = float(sim_matrix[i, j])
+                            pairs.append({
+                                "URL_A": url_list[i],
+                                "URL_B": url_list[j],
+                                "Cosinus_Ähnlichkeit": s,
+                                "Match-Typ": "Similarity (sklearn)"
+                            })
+
+            else:
+                # --- FAISS (schnell, Top-N) ---------------------------------
+                if faiss is None:
+                    st.error("FAISS ist nicht installiert (pip install faiss-cpu). Bitte installieren oder auf sklearn wechseln.")
+                else:
+                    # Für Cosine: L2-Normalisierung, dann Inner Product == Cosinus
+                    X = X_raw.copy()
+                    faiss.normalize_L2(X)
+
+                    d = X.shape[1]
+                    index = faiss.IndexFlatIP(d)   # exakte IP-Suche; für Approx ggf. IVF/HNSW nutzen
+                    index.add(X)
+
+                    n = len(url_list)
+                    k = int(min(n, max(2, faiss_topk)))
+                    sims, idxs = index.search(X, k)  # (n, k)
+
+                    # Eindeutige, ungerichtete Paare erzeugen: i < j; keine Selbst-Paare
+                    seen = set()
+                    for i in range(n):
+                        for r in range(1, k):  # r=0 wäre i selbst (Score=1.0)
+                            j = int(idxs[i, r])
+                            if j < 0 or j >= n or j == i:
+                                continue
+                            s = float(sims[i, r])
+                            if s < thr:
+                                continue
+                            a, b = (i, j) if i < j else (j, i)
+                            key = (a, b)
+                            if key in seen:
+                                continue
+                            seen.add(key)
+                            pairs.append({
+                                "URL_A": url_list[a],
+                                "URL_B": url_list[b],
+                                "Cosinus_Ähnlichkeit": s,
+                                "Match-Typ": f"Similarity (FAISS) Top-{k-1}"
+                            })
 
             if not pairs:
                 st.warning("Keine Paare über der eingestellten Ähnlichkeitsschwelle gefunden.")
             else:
+                # Optionales Limit
                 if (max_export_rows is not None) and (len(pairs) > max_export_rows):
                     st.warning(f"Export auf {int(max_export_rows):,} Zeilen begrenzt (von {len(pairs):,}).")
                     pairs = pairs[: int(max_export_rows)]
+
                 sim_df = pd.DataFrame(pairs)
+                # Sortierung: höchste Ähnlichkeit zuerst
+                sim_df = sim_df.sort_values("Cosinus_Ähnlichkeit", ascending=False, kind="stable")
+
                 csv_bytes = sim_df.to_csv(index=False).encode("utf-8-sig")
+                label_suffix = "FAISS" if sim_method.startswith("FAISS") else "sklearn"
                 st.download_button(
-                    label=f"📥 Cosinus-Ähnlichkeiten als CSV (≥ {thr:.2f})",
+                    label=f"📥 Cosinus-Ähnlichkeiten als CSV (≥ {thr:.2f}, {label_suffix})",
                     data=csv_bytes,
-                    file_name=f"cosinus_aehnlichkeiten_ge_{thr:.2f}.csv",
+                    file_name=f"cosinus_aehnlichkeiten_ge_{thr:.2f}_{label_suffix.lower()}.csv",
                     mime="text/csv",
                 )
     else:
