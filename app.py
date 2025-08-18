@@ -20,9 +20,9 @@ st.image("https://onebeyondsearch.com/img/ONE_beyond_search%C3%94%C3%87%C3%B4gra
 st.title("ONE Content-Cluster-Visualizer – Domains visuell analysieren")
 
 st.markdown("""
-<div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 0.9em; max-width: 800px; margin-bottom: 1.5em; line-height: 1.5;">
+<div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 0.9em; max-width: 600px; margin-bottom: 1.5em; line-height: 1.5;">
   Entwickelt von <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">Daniel Kremer</a> von <a href="https://onebeyondsearch.com/" target="_blank">ONE Beyond Search</a> &nbsp;|&nbsp;
-  Folge mir auf <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">LinkedIn</a> für mehr SEO-Insights und Tool-Updates.
+  Folge mir auf <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">LinkedIn</a>
 </div>
 <hr>
 """, unsafe_allow_html=True)
@@ -57,7 +57,7 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
 
 ### 🔄 Input
 - **Pflicht:** *Embedding-Datei* (CSV/Excel) mit **URLs** und **Embedding-Spalte**  
-  ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen clustern zu können – Tipp: im Screaming Frog **Segmente** z. B. anhand der URL-/Verzeichnisstruktur definieren und ausgegeben lassen) 
+  ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen clustern zu können – Tipp: im Screaming Frog **Segmente** z. B. anhand der URL-/Verzeichnisstruktur definieren) 
 - **Optional:** *URL-Performance-Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs etc.)  
   ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden. Das Tool erkennt die Spalten automatisch und bietet sie im Dropdown-Menü zur Auswahl an. 
 
@@ -77,10 +77,10 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
 """)
     st.markdown("""
 <div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
-  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong>. Genauigkeit ist entscheidend – Details
+  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong>.<br/>
+  <strong>Genauigkeit ist entscheidend</strong> – Details
   <a href="https://www.linkedin.com/posts/daniel-kremer-b38176264_vektor-embedding-analyse-klingt-smart-wird-activity-7359197501897269249-eLmI?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY"
-     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>. Ein <strong>Praxisbeispiel</strong> für die Arbeit mit dem Tool findest du <a href="https://www.linkedin.com/feed/update/urn:li:activity:7361780015908171776/"
-     target="_blank" style="color:#000; text-decoration:underline;">HIER</a> 
+     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>.
 </div>
 """, unsafe_allow_html=True)
 
@@ -729,7 +729,7 @@ def build_data_and_cache():
 
 def render_plot_from_cache(q: str):
     """Zeichnet den Plot aus dem Cache neu; bei Suche: Rest grau, Treffer farbig.
-       In der Legende: einheitliche Markergröße pro Cluster (Dummy-Legendentraces)."""
+       Legende: numerisch/alpha sortiert; Hover-Kästchen übernimmt Bubble-Farbe."""
     merged = st.session_state.get("merged_cached")
     if merged is None:
         st.info("Bitte zuerst Einstellungen wählen und auf **Let's Go / Refresh** klicken.")
@@ -750,6 +750,7 @@ def render_plot_from_cache(q: str):
         # --- Suchmodus: Basisschicht grau, nur Treffer farbig ---
         fig = go.Figure()
 
+        # Basisschicht (alle Punkte grau, Hover aus)
         fig.add_trace(go.Scatter(
             x=merged["tsne_x"], y=merged["tsne_y"], mode="markers", name="Alle",
             marker=dict(
@@ -762,6 +763,7 @@ def render_plot_from_cache(q: str):
             showlegend=False
         ))
 
+        # Treffer
         mask = merged[url_c].astype(str).str.lower().str.contains(q, na=False)
         if mask.any():
             hi = merged[mask]
@@ -780,55 +782,70 @@ def render_plot_from_cache(q: str):
                 ),
                 hovertext=hover_texts,
                 hoverinfo="text",
+                hoverlabel=dict(bgcolor="orange", font_color="black", bordercolor="black"),
                 showlegend=False
             ))
             st.caption(f"✨ {int(mask.sum())} Treffer für „{q}“")
     else:
-        # --- Normalmodus: farbige Cluster (wie vorher) ---
+        # --- Normalmodus: farbige Cluster (sortierte Legende) ---
+        merged["Cluster"] = merged["Cluster"].astype(str)
+        cluster_labels = merged["Cluster"].unique().tolist()
+
+        def _legend_sort_key(lbl):
+            try:
+                return (0, float(lbl))  # numerische Labels (inkl. -1) zuerst
+            except Exception:
+                return (1, str(lbl).lower())  # danach alphabetisch
+
+        cluster_order = [lbl for lbl in sorted(cluster_labels, key=_legend_sort_key)]
+
         fig = px.scatter(
             merged,
             x="tsne_x",
             y="tsne_y",
-            color=merged["Cluster"].astype(str),
+            color="Cluster",
+            category_orders={"Cluster": cluster_order},
             hover_data=hover_cols,
             template="plotly_white",
             title=title,
         )
-        # Größen je Trace setzen (echte Datentraces)
+
+        # Größen je Trace setzen, echte Datentraces aus der Legende ausblenden
+        # und Hoverlabel-Farbe = Marker-Farbe setzen
+        color_by_name = {}
         for tr in fig.data:
-            mask = (merged["Cluster"].astype(str) == tr.name)
+            mask = (merged["Cluster"] == tr.name)
             sizes = merged.loc[mask, "__marker_px"].tolist()
             tr.marker.update(size=sizes, sizemode="diameter", opacity=0.55, line=dict(width=0.5, color="white"))
+            # Farbe ermitteln (px setzt i.d.R. einen Farbwert pro Trace)
+            cval = tr.marker.color
+            if isinstance(cval, (list, np.ndarray)) and len(cval) > 0:
+                cval = cval[0]
+            color_by_name[tr.name] = cval
+            # Hoverlabel (Tooltip) in Bubble-Farbe
+            tr.hoverlabel = dict(bgcolor=cval, font_color="white", bordercolor="black")
             tr.legendgroup = tr.name
-            tr.showlegend = False  # echten Datentrace in der Legende ausblenden
+            tr.showlegend = False  # echte Datentraces aus Legende nehmen
 
-        # Dummy-Legendentraces mit konstanter Markergröße hinzufügen
-        for tr in list(fig.data):
-            if tr.mode == "markers" and tr.legendgroup and tr.name:
-                color = tr.marker.color
-                if isinstance(color, (list, np.ndarray)) and len(color) > 0:
-                    color = color[0]
-                dummy = go.Scatter(
-                    x=[None], y=[None],
-                    mode="markers",
-                    name=tr.name,
-                    legendgroup=tr.legendgroup,
-                    showlegend=True,
-                    marker=dict(
-                        size=12,  # einheitliche Legenden-Größe
-                        color=color,
-                        line=dict(width=0.5, color="white")
-                    ),
-                    hoverinfo="skip"
-                )
-                fig.add_trace(dummy)
+        # Dummy-Legendentraces in gewünschter Reihenfolge hinzufügen (einheitliche Größe)
+        for name in cluster_order:
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None],
+                mode="markers",
+                name=name,
+                legendgroup=name,
+                showlegend=True,
+                marker=dict(size=12, color=color_by_name.get(name, None), line=dict(width=0.5, color="white")),
+                hoverinfo="skip"
+            ))
 
     # Centroid optional
     if centroid_xy is not None:
         cx, cy = centroid_xy
         fig.add_trace(go.Scatter(
             x=[cx], y=[cy], mode="markers", name="Centroid",
-            marker=dict(symbol="star", size=int(centroid_size), color="red", line=dict(width=1, color="black"))
+            marker=dict(symbol="star", size=int(centroid_size), color="red", line=dict(width=1, color="black")),
+            hoverlabel=dict(bgcolor="red", font_color="white", bordercolor="black")
         ))
 
     fig.update_layout(
