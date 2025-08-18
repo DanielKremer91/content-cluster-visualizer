@@ -17,12 +17,12 @@ import plotly.graph_objects as go  # für graue Basisschicht & präzise Markerst
 # =============================
 st.set_page_config(page_title="ONE Content-Cluster-Visualizer", layout="wide")
 st.image("https://onebeyondsearch.com/img/ONE_beyond_search%C3%94%C3%87%C3%B4gradient%20%282%29.png", width=250)
-st.title("ONE Content-Cluster-Visualizer")
+st.title("ONE Content-Cluster-Visualizer – Domains visuell analysieren")
 
 st.markdown("""
-<div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 0.9em; max-width: 880px; margin-bottom: 1.5em; line-height: 1.5;">
+<div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 0.9em; max-width: 600px; margin-bottom: 1.5em; line-height: 1.5;">
   Entwickelt von <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">Daniel Kremer</a> von <a href="https://onebeyondsearch.com/" target="_blank">ONE Beyond Search</a> &nbsp;|&nbsp;
-  Folge mir auf <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">LinkedIn</a> für mehr SEO-Insights, Tool-Updates und -Tipps.
+  Folge mir auf <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">LinkedIn</a>
 </div>
 <hr>
 """, unsafe_allow_html=True)
@@ -46,38 +46,43 @@ div.stDownloadButton > button:hover {
 """, unsafe_allow_html=True)
 
 # =============================
-# Hilfe (Variante A, kompakt) – im Expander
+# Hilfe / Tool-Dokumentation (Expander)
 # =============================
 with st.expander("❓ Hilfe / Tool-Dokumentation", expanded=False):
     st.markdown("""
 ## Was macht der ONE Content-Cluster-Visualizer?
 
-Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt dir,
-**Cluster zu bilden**, **Seiten zu suchen/markieren** und **für SEO-Audits relevante Listen zu exportieren**.
+Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt dir u. a.
+**thematische Ausreißer (Off-Topic-Content)** zu erkennen und **für SEO-Audits relevante Listen zu exportieren**.
 
 ### 🔄 Input
-- **Pflicht:** *Embedding-Datei* (CSV/Excel) mit **URLs** und **Embedding-Spalte**
-  ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen clustern zu können – Tipp: im Screaming Frog Segemente beispielsweise anhand der URL-/Verzeichnisstruktur definieren) 
-- **Optional:** *URL-Performance-Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs)  
-  ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden.  
+- **Pflicht:** *Embedding-Datei* (CSV/Excel) mit **URLs** und **Embedding-Spalte**  
+  ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen clustern zu können – Tipp: im Screaming Frog **Segmente** z. B. anhand der URL-/Verzeichnisstruktur definieren) 
+- **Optional:** *URL-Performance-Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs etc.)  
+  ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden. Das Tool erkennt die Spalten automatisch und bietet sie im Dropdown-Menü zur Auswahl an. 
 
 ### ⚙️ Wie funktioniert’s?
 - **t-SNE** projiziert hochdimensionale Embeddings auf 2D, um **Nachbarschaften** sichtbar zu machen.
-- **Clustering:** *K-Means* (feste k; Anzahl der Cluster wählbar), *DBSCAN* (dichtebasiert, Cosinus-Distanz)oder vorhandene *Segments*-Spalte nutzen .    
+- **Clustering:** *K-Means* (feste k; Anzahl der Cluster wählbar), *DBSCAN* (dichtebasiert, Cosinus-Distanz) oder vorhandene *Segments*-Spalte nutzen.    
 - **Abstände:** *Euklidisch* misst Luftlinie; *Cosinus* misst **Winkel/Ähnlichkeit** der Vektoren.  
-- **Bubble-Größe:** nach beliebiger **numerischer KPI** aus der Performance-Datei darstellbar
-- **Suche:** interaktive **URL-Suche** – Treffer werden farbig markiert, restliche Bubbles werden ausgegraut  
-- **Centroid:** thematischen **Schwerpunkt** markieren (roter Stern)
+- **Bubble-Größe:** nach beliebiger **numerischer KPI** aus der Performance-Datei darstellbar.
+- **Suche:** interaktive **URL-Suche** – Treffer werden farbig markiert, restliche Bubbles werden ausgegraut.  
+- **Centroid:** thematischen **Schwerpunkt** markieren (roter Stern).
 
 ### 📤 Output (Ergebnisse)
 - **Interaktives t-SNE-Chart** (HTML-Export möglich)  
 - **CSV-Exports (optional):**  
-  1) **Semantisch ähnliche Paare** (mit Cosinus-Score,Cosinus-Similarity ≥ Schwellenwert), Schwellenwert frei definierbar)  
-  2) **Low-Relevance-URLs** (Cosinus-Similarity zum Centroid < Schwellwert), um thematische Ausreißer-URLs "schwarz auf weiß" vorliegen zu haben
-
-> 💡 **Komische Ergebnisse?** Oft liegt es an der **Embedding-Erzeugung**.  
-> **Genauigkeit ist entscheidend** – Details [HIER](https://www.linkedin.com/posts/daniel-kremer-b38176264_vektor-embedding-analyse-klingt-smart-wird-activity-7359197501897269249-eLmI?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY)
+  1) **Semantisch ähnliche Paare** (mit Cosinus-Score, Cosinus-Similarity ≥ Schwellenwert; frei definierbar)  
+  2) **Low-Relevance-URLs** (Cosinus-Similarity zum Centroid < Schwellwert), um thematische Ausreißer-URLs „schwarz auf weiß“ vorliegen zu haben
 """)
+    st.markdown("""
+<div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
+  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong>.<br/>
+  <strong>Genauigkeit ist entscheidend</strong> – Details
+  <a href="https://www.linkedin.com/posts/daniel-kremer-b38176264_vektor-embedding-analyse-klingt-smart-wird-activity-7359197501897269249-eLmI?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY"
+     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>.
+</div>
+""", unsafe_allow_html=True)
 
 # =============================
 # Utilities
@@ -584,7 +589,7 @@ export_csv = st.sidebar.checkbox(
 sim_threshold = st.sidebar.slider(
     "Ähnlichkeitsschwelle (Cosinus)",
     min_value=0.00, max_value=1.00, value=0.00, step=0.01,
-    help=("Nur URL-Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert werden exportiert. "
+    help=("Nur Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert werden exportiert. "
           "1.00 = sehr ähnlich/identisch, 0.00 = keine Ähnlichkeit."),
     disabled=not export_csv
 )
