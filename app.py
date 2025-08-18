@@ -598,7 +598,6 @@ bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="
 # Kleine Section-Überschrift für Exporte
 st.sidebar.markdown("**Weitere Exportmöglichkeiten**")
 
-
 # Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
 export_csv = st.sidebar.checkbox(
     "Semantisch ähnliche URLs exportieren", value=False,
@@ -606,9 +605,11 @@ export_csv = st.sidebar.checkbox(
 )
 
 # --- Methode für Ähnlichkeits-Export (mit ausführlichem Help-Text) ---
+faiss_available = faiss is not None
+method_options = ["sklearn (präzise)"] + (["FAISS (schnell)"] if faiss_available else [])
 sim_method = st.sidebar.radio(
     "Berechnungsmethode (Ähnlichkeits-Export)",
-    ["sklearn (präzise)", "FAISS (schnell)"],
+    method_options,
     index=0,
     help=(
         "Wähle die Methode für den Export semantisch ähnlicher URL-Paare.\n\n"
@@ -616,9 +617,11 @@ sim_method = st.sidebar.radio(
         "Empfehlung für kleinere bis mittlere Datensätze (grobe Faustregel: bis ~2–5k URLs).\n\n"
         "• FAISS (schnell): Sehr schnelle Nachbarsuche – ideal für große Datensätze. "
         "Für Cosinus-Ähnlichkeit werden die Embeddings L2-normalisiert; der Inner Product entspricht dann der Cosinus-Similarity. "
-        "In dieser App berechnen wir bei FAISS alle Nachbarn (k = N), sodass kein Match verpasst wird."
+        "Wir nutzen FAISS als Range Search (liefert nur Treffer ≥ Schwelle) – kein Top-N nötig."
     )
 )
+if not faiss_available:
+    st.sidebar.info("FAISS ist (noch) nicht installiert. Installiere faiss-cpu, um die schnelle Methode zu aktivieren.")
 
 sim_threshold = st.sidebar.slider(
     "Ähnlichkeitsschwelle (Cosinus)",
@@ -957,31 +960,31 @@ if export_csv:
                             })
 
             else:
-                # --- FAISS (alle Nachbarn; k = N) ---------------------------
+                # --- FAISS (Range Search: nur Treffer ≥ Schwelle) -----------
                 if faiss is None:
                     st.error("FAISS ist nicht installiert (pip install faiss-cpu). Bitte installieren oder auf sklearn wechseln.")
                 else:
-                    X = X_raw.copy()
+                    X = X_raw.copy().astype('float32')
                     # Für Cosine: L2-Norm -> Inner Product == Cosinus
                     faiss.normalize_L2(X)
 
                     d = X.shape[1]
-                    index = faiss.IndexFlatIP(d)  # exakte IP-Suche
+                    index = faiss.IndexFlatIP(d)  # exakte Inner-Product-Suche
                     index.add(X)
 
                     n = len(url_list)
-                    # k=N: alle Nachbarn inkl. Selbsttreffer (Rang 0)
-                    sims, idxs = index.search(X, n)
+                    # Range Search liefert nur Nachbarn mit Score >= thr
+                    lims, D, I = index.range_search(X, thr)
 
-                    seen = set()  # (i,j) mit i<j, um Duplikate zu vermeiden
+                    seen = set()  # (i,j) mit i<j
                     for i in range(n):
-                        for r in range(1, n):  # r=0 ist i selbst (Score=1.0)
-                            j = int(idxs[i, r])
+                        start, end = lims[i], lims[i+1]
+                        for p in range(start, end):
+                            j = int(I[p])
                             if j == i or j < 0 or j >= n:
                                 continue
-                            s = float(sims[i, r])
-                            if s < thr:
-                                continue
+                            s = float(D[p])
+                            # i<j, um Duplikate zu vermeiden
                             a, b = (i, j) if i < j else (j, i)
                             key = (a, b)
                             if key in seen:
@@ -991,7 +994,7 @@ if export_csv:
                                 "URL_A": url_list[a],
                                 "URL_B": url_list[b],
                                 "Cosinus_Ähnlichkeit": s,
-                                "Match-Typ": "Similarity (FAISS, k=N)"
+                                "Match-Typ": "Similarity (FAISS, range)"
                             })
 
             if not pairs:
