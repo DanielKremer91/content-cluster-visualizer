@@ -5,27 +5,12 @@ import ast
 import re
 from io import BytesIO
 from urllib.parse import urlparse
-import functools
 
 from sklearn.manifold import TSNE
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
 import plotly.express as px
 import plotly.graph_objects as go  # für graue Basisschicht & präzise Markersteuerung
-
-# -------------------------------------------------
-# FAISS lazy import (verhindert Crash beim App-Start)
-# -------------------------------------------------
-@functools.lru_cache(None)
-def get_faiss():
-    try:
-        import faiss  # pip install faiss-cpu
-        return faiss
-    except Exception:
-        return None
-
-# Optional: detailliertere Fehlermeldungen in Streamlit
-st.set_option("client.showErrorDetails", True)
 
 # =============================
 # Page setup & Branding
@@ -101,9 +86,14 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
   2) **Low-Relevance-URLs** (Cosinus-Similarity zum Centroid < Schwellwert), um thematische Ausreißer-URLs „schwarz auf weiß“ vorliegen zu haben
 """)
 
+    # Optional: zweite Info-Box
     st.markdown("""
 <div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
-  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong> …
+  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong>. Genauigkeit ist entscheidend – Details
+  <a href="https://www.linkedin.com/posts/daniel-kremer-b38176264_vektor-embedding-analyse-klingt-smart-wird-activity-7359197501897269249-eLmI?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY"
+     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>. Ein <strong>Praxisbeispiel</strong> findet ihr
+  <a href="https://www.linkedin.com/posts/daniel-kremer-b38176264_%F0%9D%90%85%F0%9D%90%A2%F0%9D%90%A7%F0%9D%90%A0%F0%9D%90%9E%F0%9D%90%AB-%F0%9D%90%B0%F0%9D%90%9E%F0%9D%90%A0-%F0%9D%90%AF%F0%9D%90%A8%F0%9D%90%A7-%F0%9D%90%82%F0%9D%90%A8%F0%9D%90%A7%F0%9D%90%AD%F0%9D%90%9E%F0%9D%90%A7%F0%9D%90%AD-%F0%9D%90%80%F0%9D%90%AE%F0%9D%90%9D%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%AC-activity-7361780015908171776-3Y-f?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY"
+     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>.
 </div>
 """, unsafe_allow_html=True)
 
@@ -119,6 +109,9 @@ def _cleanup_headers(df: pd.DataFrame) -> pd.DataFrame:
 def robust_read_table(uploaded_file):
     """
     Robustes Einlesen: CSV/Excel mit Encoding- und Delimiter-Fallback.
+    - Bevorzugt: Excel, GSC (UTF-16 + Tab), dann Auto-Detect.
+    - HARTE SICHERUNG: Wenn nur 1 Spalte rauskommt, prüfen wir Header + erste Datenzeile
+      und lesen gezielt mit erkannten Delimitern (z. B. ';', ',', '\\t', '|', ':') neu ein.
     """
     name = uploaded_file.name.lower()
     raw = uploaded_file.getvalue()
@@ -539,14 +532,31 @@ size_method = st.sidebar.radio(
           "- Logarithmisch (log1p): komprimiert große Werteunterschiede, robust gegen Ausreißer; ideal bei schiefen Verteilungen.\n"
           "- Linear (Min–Max): erhält Proportionen direkt; kann bei Ausreißern sehr große/kleine Bubbles erzeugen.\n\n"
           "Tipp: Nutze ‚Perzentil-Grenze unten/oben (%)‘, um Extremwerte abzuschneiden, und ‚Min-/Max-Größe‘ sowie ‚Bubble-Scale‘, "
-          "um die Darstellung feinzujustieren.")
+          "um die Darstellung feinzujustieren.\n\n"
+          "Hinweis: In der Praxis ist „Logarithmisch“ bei SEO/GSC-Daten fast immer die bessere Wahl (Long Tail, schiefe Verteilungen).")
 )
 
 # Min-/Max-Größe + Perzentil-Grenzen
-size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2)
-size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10)
-clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1)
-clip_high = st.sidebar.slider("Perzentil-Grenze oben (%)", 80, 100, 95)
+size_min = st.sidebar.slider(
+    "Min-Größe (px)", 1, 12, 2,
+    help=("Kleinster Bubble-Durchmesser in Pixeln nach der Skalierung. "
+          "Verhindert, dass sehr kleine Werte ‚verschwinden‘.")
+)
+size_max = st.sidebar.slider(
+    "Max-Größe (px)", 6, 40, 10,
+    help=("Größter Bubble-Durchmesser in Pixeln nach der Skalierung. "
+          "Zu groß kann zu starker Überlappung führen.")
+)
+clip_low = st.sidebar.slider(
+    "Perzentil-Grenze unten (%)", 0, 20, 1,
+    help=("Hebt sehr kleine Werte auf diese Untergrenze an (Perzentil). So „verschwinden“ kleine Bubbles nicht. "
+          "Wirkt nur auf die Bubble-Größen, nicht auf t-SNE, Cluster oder Exporte.")
+)
+clip_high = st.sidebar.slider(
+    "Perzentil-Grenze oben (%)", 80, 100, 95,
+    help=("Begrenzt sehr große Werte auf diese Obergrenze (Perzentil), damit einzelne Riesen-Bubbles die Darstellung nicht dominieren. "
+          "Wirkt nur auf die Bubble-Größen, nicht auf t-SNE, Cluster oder Exporte.")
+)
 
 # Centroid-Optionen
 show_centroid = st.sidebar.checkbox(
@@ -569,14 +579,15 @@ centroid_size = st.sidebar.slider(
     disabled=not show_centroid
 )
 
-# Bubble-Scale und Hintergrundfarbe
+# Bubble-Scale und Hintergrundfarbe (vor Export-Überschrift)
 if perf_df is not None and (size_by != "Keine Skalierung"):
     bubble_scale = st.sidebar.slider(
         "Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05,
-        help=("Globaler Zoomfaktor für die Blasengrößen.")
+        help=("Globaler Zoomfaktor für die Blasengrößen: multipliziert alle Durchmesser nach der Berechnung "
+              "(Min/Max, Perzentil-Grenzen, Log/Linear). Praktisch zum schnellen Feinjustieren, ohne Min/Max zu ändern.")
     )
 else:
-    bubble_scale = 1.0
+    bubble_scale = 1.0  # Standard: kein globales Upscaling/Downscaling
 
 bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="#FFFFFF")
 
@@ -588,23 +599,6 @@ export_csv = st.sidebar.checkbox(
     "Semantisch ähnliche URLs exportieren", value=False,
     help="Export semantisch ähnlicher URL-Paare mit einer Cosinus Similarity über dem gewählten Schwellenwert als CSV"
 )
-
-# --- Methode für Ähnlichkeits-Export (FAISS nur anzeigen, wenn verfügbar) ---
-faiss_available = get_faiss() is not None
-method_options = ["sklearn (präzise)"] + (["FAISS (schnell)"] if faiss_available else [])
-sim_method = st.sidebar.radio(
-    "Berechnungsmethode (Ähnlichkeits-Export)",
-    method_options,
-    index=0,
-    help=(
-        "• sklearn (präzise): Exakte Cosinus-Ähnlichkeit via vollständiger Paar-Berechnung.\n"
-        "• FAISS (schnell): Sehr schnelle Nachbarsuche. Für Cosinus normalisieren wir L2; "
-        "wir nutzen Range Search (liefert nur Treffer ≥ Schwelle) – kein Top-N nötig."
-    )
-)
-if not faiss_available:
-    st.sidebar.info("FAISS ist hier nicht verfügbar. Installiere faiss-cpu, um die schnelle Methode zu aktivieren.")
-
 sim_threshold = st.sidebar.slider(
     "Ähnlichkeitsschwelle (Cosinus)",
     min_value=0.00, max_value=1.00, value=0.00, step=0.01,
@@ -616,12 +610,15 @@ sim_threshold = st.sidebar.slider(
 # Export 2: Low-Relevance (Centroid-Ähnlichkeit) mit Schwellwert
 export_lowrel_csv = st.sidebar.checkbox(
     "Low-Relevance-URLs exportieren", value=False,
-    help=("Low-Relevance URLs als CSV exportieren (Cosinus zum Centroid < Schwelle).")
+    help=("Low-Relevance URLs (thematische Ausreißer-URLs) als CSV exportieren. "
+          "Beispielsweise alle URLs mit einer Cosinus Similarity von unter 0,4 zum Centroid (Durchschnitt aller Embeddings). "
+          "Schwellenwert ist flexibel anpassbar.")
 )
 lowrel_threshold = st.sidebar.slider(
     "Ähnlichkeitsschwelle zum Centroid (Cosinus)",
     min_value=0.00, max_value=1.00, value=0.40, step=0.01,
-    help=("Nur Seiten mit Cosinus-Ähnlichkeit zum Centroid unterhalb der Schwelle werden exportiert."),
+    help=("Nur Seiten mit Cosinus-Ähnlichkeit zum Centroid unterhalb der Schwelle werden exportiert. "
+          "Niedrige Werte = thematisch abweichend."),
     disabled=not export_lowrel_csv
 )
 
@@ -667,14 +664,8 @@ def build_data_and_cache():
         merged.drop(columns=["__join"], inplace=True, errors="ignore")
 
     # t-SNE (+ optionaler Centroid-Punkt)
+    perplexity = int(min(30, max(5, len(merged) // 3)))
     X = np.array(merged["embedding_vector"].tolist())
-    n = len(merged)
-    if n <= 6:
-        perplexity = max(2, n - 1)
-    else:
-        perplexity = min(30, max(5, n // 3))
-    perplexity = min(perplexity, max(2, n - 1))
-
     use_centroid_flag = bool(show_centroid)
     if use_centroid_flag:
         centroid_vec, centroid_mode_eff = compute_centroid(X, centroid_mode)
@@ -750,7 +741,8 @@ def build_data_and_cache():
         st.session_state["centroid_mode_eff"] = None
 
 def render_plot_from_cache(q: str):
-    """Zeichnet den Plot aus dem Cache neu; bei Suche: Rest grau, Treffer farbig."""
+    """Zeichnet den Plot aus dem Cache neu; bei Suche: Rest grau, Treffer farbig.
+       Legende: numerisch/alpha sortiert; Hover-Kästchen übernimmt Bubble-Farbe."""
     merged = st.session_state.get("merged_cached")
     if merged is None:
         st.info("Bitte zuerst Einstellungen wählen und auf **Let's Go / Refresh** klicken.")
@@ -831,19 +823,21 @@ def render_plot_from_cache(q: str):
             title=title,
         )
 
-        # Größen je Trace setzen & Hoverlabel-Farbe = Marker-Farbe
+        # Größen je Trace setzen, echte Datentraces aus der Legende ausblenden
+        # und Hoverlabel-Farbe = Marker-Farbe setzen
         color_by_name = {}
         for tr in fig.data:
             mask = (merged["Cluster"] == tr.name)
             sizes = merged.loc[mask, "__marker_px"].tolist()
             tr.marker.update(size=sizes, sizemode="diameter", opacity=0.55, line=dict(width=0.5, color="white"))
+            # Farbe ermitteln
             cval = tr.marker.color
             if isinstance(cval, (list, np.ndarray)) and len(cval) > 0:
                 cval = cval[0]
             color_by_name[tr.name] = cval
             tr.hoverlabel = dict(bgcolor=cval, font_color="white", bordercolor="black")
             tr.legendgroup = tr.name
-            tr.showlegend = False
+            tr.showlegend = False  # echte Datentraces aus Legende nehmen
 
         # Dummy-Legendentraces in gewünschter Reihenfolge hinzufügen
         for name in cluster_order:
@@ -911,73 +905,32 @@ if export_csv:
     if merged_cached is not None:
         with st.spinner("Berechne semantische Ähnlichkeiten…"):
             url_list = merged_cached[url_col].astype(str).tolist()
-            # Embeddings für Export aus dem Cache (konsistent zur Reihenfolge im Plot)
             X_raw = np.array(merged_cached["embedding_vector"].tolist()).astype("float32")
             thr = float(sim_threshold)
             pairs = []
 
-            if sim_method.startswith("sklearn"):
-                # --- EXAKT (O(N^2)) -----------------------------------------
-                sim_matrix = cosine_similarity(X_raw)
-                n = len(url_list)
-                est_pairs = n * (n - 1) // 2
-                if unlimited_export and est_pairs > 2_000_000 and thr <= 0.2:
-                    st.warning(f"Viele Paare erwartet (~{est_pairs:,}). "
-                               f"Niedrige Schwelle + kein Limit kann sehr große CSVs erzeugen.")
+            # --- SKLEARN (exakt, O(N^2)) -----------------------------------
+            sim_matrix = cosine_similarity(X_raw)
+            n = len(url_list)
+            est_pairs = n * (n - 1) // 2
+            if unlimited_export and est_pairs > 2_000_000 and thr <= 0.2:
+                st.warning(f"Viele Paare erwartet (~{est_pairs:,}). "
+                           f"Niedrige Schwelle + kein Limit kann sehr große CSVs erzeugen.")
 
-                # Nur obere Dreiecksmatrix (i<j) -> eindeutige Paare, keine Selbstpaare
-                for i in range(n):
-                    row = sim_matrix[i, i+1:]
-                    j_idx = np.where(row >= thr)[0]
-                    if len(j_idx):
-                        for off in j_idx:
-                            j = i + 1 + int(off)
-                            s = float(sim_matrix[i, j])
-                            pairs.append({
-                                "URL_A": url_list[i],
-                                "URL_B": url_list[j],
-                                "Cosinus_Ähnlichkeit": s,
-                                "Match-Typ": "Similarity (sklearn)"
-                            })
-
-            else:
-                # --- FAISS (Range Search: nur Treffer ≥ Schwelle) -----------
-                faiss = get_faiss()
-                if faiss is None:
-                    st.error("FAISS ist nicht installiert (pip install faiss-cpu). Bitte installieren oder auf sklearn wechseln.")
-                else:
-                    X = X_raw.copy().astype('float32')
-                    # Für Cosine: L2-Norm -> Inner Product == Cosinus
-                    faiss.normalize_L2(X)
-
-                    d = X.shape[1]
-                    index = faiss.IndexFlatIP(d)  # exakte Inner-Product-Suche
-                    index.add(X)
-
-                    n = len(url_list)
-                    # Range Search liefert nur Nachbarn mit Score >= thr
-                    lims, D, I = index.range_search(X, thr)
-
-                    seen = set()  # (i,j) mit i<j
-                    for i in range(n):
-                        start, end = lims[i], lims[i+1]
-                        for p in range(start, end):
-                            j = int(I[p])
-                            if j == i or j < 0 or j >= n:
-                                continue
-                            s = float(D[p])
-                            # i<j, um Duplikate zu vermeiden
-                            a, b = (i, j) if i < j else (j, i)
-                            key = (a, b)
-                            if key in seen:
-                                continue
-                            seen.add(key)
-                            pairs.append({
-                                "URL_A": url_list[a],
-                                "URL_B": url_list[b],
-                                "Cosinus_Ähnlichkeit": s,
-                                "Match-Typ": "Similarity (FAISS, range)"
-                            })
+            # Nur obere Dreiecksmatrix (i<j): eindeutige Paare, keine Selbstpaare
+            for i in range(n):
+                row = sim_matrix[i, i+1:]
+                j_idx = np.where(row >= thr)[0]
+                if len(j_idx):
+                    for off in j_idx:
+                        j = i + 1 + int(off)
+                        s = float(sim_matrix[i, j])
+                        pairs.append({
+                            "URL_A": url_list[i],
+                            "URL_B": url_list[j],
+                            "Cosinus_Ähnlichkeit": s,
+                            "Match-Typ": "Similarity (sklearn)"
+                        })
 
             if not pairs:
                 st.warning("Keine Paare über der eingestellten Ähnlichkeitsschwelle gefunden.")
@@ -988,15 +941,13 @@ if export_csv:
                     pairs = pairs[: int(max_export_rows)]
 
                 sim_df = pd.DataFrame(pairs)
-                # Sortierung: höchste Ähnlichkeit zuerst
                 sim_df = sim_df.sort_values("Cosinus_Ähnlichkeit", ascending=False, kind="stable")
 
                 csv_bytes = sim_df.to_csv(index=False).encode("utf-8-sig")
-                label_suffix = "FAISS" if sim_method.startswith("FAISS") else "sklearn"
                 st.download_button(
-                    label=f"📥 Cosinus-Ähnlichkeiten als CSV (≥ {thr:.2f}, {label_suffix})",
+                    label=f"📥 Cosinus-Ähnlichkeiten als CSV (≥ {thr:.2f}, sklearn)",
                     data=csv_bytes,
-                    file_name=f"cosinus_aehnlichkeiten_ge_{thr:.2f}_{label_suffix.lower()}.csv",
+                    file_name=f"cosinus_aehnlichkeiten_ge_{thr:.2f}_sklearn.csv",
                     mime="text/csv",
                 )
     else:
