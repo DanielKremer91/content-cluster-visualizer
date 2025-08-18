@@ -6,9 +6,15 @@ import re
 from io import BytesIO
 from urllib.parse import urlparse
 
-from sklearn.manifold import TSNE
-from sklearn.cluster import KMeans, DBSCAN
-from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
+SKLEARN_OK = True
+_import_err = None
+try:
+    from sklearn.manifold import TSNE
+    from sklearn.cluster import KMeans, DBSCAN
+    from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
+except Exception as e:
+    SKLEARN_OK = False
+    _import_err = e
 import plotly.express as px
 import plotly.graph_objects as go  # für graue Basisschicht & präzise Markersteuerung
 
@@ -18,6 +24,16 @@ import plotly.graph_objects as go  # für graue Basisschicht & präzise Markerst
 st.set_page_config(page_title="ONE Semantic Content-Map", layout="wide")
 st.image("https://onebeyondsearch.com/img/ONE_beyond_search%C3%94%C3%87%C3%B4gradient%20%282%29.png", width=250)
 st.title("ONE Semantic Content-Map")
+
+if not SKLEARN_OK:
+    st.error(
+        "💥 Problem beim Laden von scikit-learn / NumPy.\n\n"
+        f"**Fehler:** `{_import_err}`\n\n"
+        "Bitte prüfe deine Umgebung: `numpy` und `scikit-learn` Versionen müssen zueinander passen "
+        "(z. B. numpy==1.26.4, scikit-learn==1.4.2)."
+    )
+    st.stop()
+
 
 st.markdown("""
 <div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 0.9em; max-width: 765px; margin-bottom: 1.5em; line-height: 1.5;">
