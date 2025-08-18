@@ -598,7 +598,13 @@ bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="
 # Kleine Section-Überschrift für Exporte
 st.sidebar.markdown("**Weitere Exportmöglichkeiten**")
 
-# --- Methode für Ähnlichkeits-Export (mit ausführlichem Help-Text) ---
+
+# Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
+export_csv = st.sidebar.checkbox(
+    "Semantisch ähnliche URLs exportieren", value=False,
+    help="Export semantisch ähnlicher URL-Paare mit einer Cosinus Similarity über dem gewählten Schwellenwert als CSV"
+)
+
 # --- Methode für Ähnlichkeits-Export (mit ausführlichem Help-Text) ---
 sim_method = st.sidebar.radio(
     "Berechnungsmethode (Ähnlichkeits-Export)",
@@ -614,11 +620,6 @@ sim_method = st.sidebar.radio(
     )
 )
 
-# Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
-export_csv = st.sidebar.checkbox(
-    "Semantisch ähnliche URLs exportieren", value=False,
-    help="Export semantisch ähnlicher URL-Paare mit einer Cosinus Similarity über dem gewählten Schwellenwert als CSV"
-)
 sim_threshold = st.sidebar.slider(
     "Ähnlichkeitsschwelle (Cosinus)",
     min_value=0.00, max_value=1.00, value=0.00, step=0.01,
