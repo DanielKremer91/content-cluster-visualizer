@@ -59,7 +59,7 @@ VER_PD = pd.__version__
 st.sidebar.info(f"🔧 Python {VER_PY} · NumPy {VER_NP} · pandas {VER_PD} · scikit-learn {VER_SKL}")
 
 st.markdown("""
-<div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 0.9em; max-width: 765px; margin-bottom: 1.5em; line-height: 1.5;">
+<div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 1.2em; max-width: 765px; margin-bottom: 1.5em; line-height: 1.5;">
   Entwickelt von <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">Daniel Kremer</a> von <a href="https://onebeyondsearch.com/" target="_blank">ONE Beyond Search</a> &nbsp;|&nbsp;
   Folge mir auf <a href="https://www.linkedin.com/in/daniel-kremer-b38176264/" target="_blank">LinkedIn</a> für mehr SEO-Insights und Tool-Updates
 </div>
