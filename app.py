@@ -599,6 +599,7 @@ bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="
 st.sidebar.markdown("**Weitere Exportmöglichkeiten**")
 
 # --- Methode für Ähnlichkeits-Export (mit ausführlichem Help-Text) ---
+# --- Methode für Ähnlichkeits-Export (mit ausführlichem Help-Text) ---
 sim_method = st.sidebar.radio(
     "Berechnungsmethode (Ähnlichkeits-Export)",
     ["sklearn (präzise)", "FAISS (schnell)"],
@@ -609,23 +610,8 @@ sim_method = st.sidebar.radio(
         "Empfehlung für kleinere bis mittlere Datensätze (grobe Faustregel: bis ~2–5k URLs).\n\n"
         "• FAISS (schnell): Sehr schnelle Nachbarsuche – ideal für große Datensätze. "
         "Für Cosinus-Ähnlichkeit werden die Embeddings L2-normalisiert; der Inner Product entspricht dann der Cosinus-Similarity. "
-        "Mit dem Top-N-Regler steuerst du, wie viele nächste Nachbarn pro URL geprüft werden.\n\n"
-        "Hinweis: Mit FAISS IndexFlatIP (ohne Approximation) sind die Ergebnisse praktisch identisch zu sklearn "
-        "(bis auf minimale Rundungsunterschiede). Bei Approx-Indizes (z. B. IVF/HNSW) können leichte Abweichungen auftreten, "
-        "dafür ist die Suche noch schneller."
+        "In dieser App berechnen wir bei FAISS alle Nachbarn (k = N), sodass kein Match verpasst wird."
     )
-)
-
-# Nur relevant, wenn FAISS gewählt ist
-faiss_topk = st.sidebar.number_input(
-    "Top-N Nachbarn pro URL (nur FAISS)",
-    min_value=5, max_value=1000, value=50, step=5,
-    help=(
-        "Wie viele nächste Nachbarn je URL abgefragt werden. "
-        "Je höher dein Ähnlichkeits-Schwellwert, desto weniger Nachbarn sind nötig; "
-        "bei sehr niedrigem Schwellwert ggf. höher stellen."
-    ),
-    disabled=(sim_method != "FAISS (schnell)")
 )
 
 # Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
