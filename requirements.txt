@@ -8,3 +8,5 @@ openpyxl==3.1.5
 xlrd==2.0.1
 umap-learn==0.5.5
 faiss-cpu==1.8.0.post5
+numba==0.59.1
+pynndescent==0.5.12
