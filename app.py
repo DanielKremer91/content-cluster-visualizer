@@ -443,6 +443,9 @@ with st.spinner("Verarbeite Embeddings…"):
     df_valid = df[df["embedding_vector"].apply(lambda x: isinstance(x, list) and len(x) > 0)].copy()
     df_valid["embedding_vector"], dim = normalize_embedding_lengths(df_valid["embedding_vector"])
 
+# Nach erfolgreichem Einlesen und Erzeugen von df_valid:
+st.session_state["__has_data__"] = True
+
 if len(df_valid) < 5:
     st.error("❌ Zu wenige gültige Embeddings. Mindestens 5 erforderlich.")
     st.stop()
@@ -514,6 +517,10 @@ if perf_file is not None:
         perf_df = None
         perf_metric_candidates = []
 
+# =============================
+# Sidebar Controls (immer rendern; ggf. disabled bis Daten da sind)
+# =============================
+needs_data = st.session_state.get("__has_data__", False)
 
 # L2-Normalisierung (empfohlen)
 use_l2 = st.sidebar.checkbox(
@@ -523,7 +530,9 @@ use_l2 = st.sidebar.checkbox(
 
 # Projektion (t-SNE/UMAP)
 proj_method = st.sidebar.selectbox(
-    "2D-Projektion", ["t-SNE", "UMAP" if HAS_UMAP else "UMAP (nicht installiert)"] if True else ["t-SNE"], index=0,
+    "2D-Projektion",
+    ["t-SNE", "UMAP" if HAS_UMAP else "UMAP (nicht installiert)"],
+    index=0,
     help=("Wähle die Methode zur 2D-Darstellung: t-SNE (sehr starke lokale Strukturen) oder UMAP (schneller, behält eher globale Struktur)."
           + ("\nHinweis: Für UMAP bitte 'umap-learn' installieren." if not HAS_UMAP else ""))
 )
@@ -537,64 +546,61 @@ metric_label = st.sidebar.selectbox(
 )
 tsne_metric = "euclidean" if metric_label == "Euklidisch" else "cosine"
 
-# UMAP-Parameter (nur wenn verfügbar)
+# UMAP-Parameter (nur zeigen, wenn gewählt & installiert)
 if HAS_UMAP and "UMAP" in proj_method:
     umap_n_neighbors = st.sidebar.slider("UMAP: n_neighbors", 5, 100, 15, 1,
                                          help="Größe des lokalen Nachbarschaftsgraphen. Höher = globalere Struktur, niedriger = lokale Details.")
     umap_min_dist = st.sidebar.slider("UMAP: min_dist", 0.0, 0.99, 0.10, 0.01,
                                       help="Wie dicht Punkte zusammenliegen dürfen. Kleiner = kompaktere Cluster.")
 
-# Dynamische Optionsliste: 'Segments' nur, wenn Spalte existiert
+# Cluster-Optionen (Segments erst, wenn später erkannt)
 cluster_options = ["K-Means", "DBSCAN (Cosinus)"]
-if segment_col_global:
-    cluster_options.insert(1, "Segments")
+# Wir zeigen hier einen Hinweis; echte Erkennung passiert nach Upload.
+st.sidebar.caption("ℹ️ Option „Segments“ erscheint automatisch, sobald eine Segment-/Cluster-Spalte erkannt wurde.")
 
 cluster_method = st.sidebar.selectbox(
     "Clustermethode",
     cluster_options,
-    help=("K-Means: feste Clusterzahl • "
-          + (f"Segments: nutzt erkannte Spalte „{segment_col_global}“ • " if segment_col_global else "")
-          + "DBSCAN: dichtebasiert (Cosinus)")
+    help="K-Means: feste Clusterzahl • DBSCAN: dichtebasiert (Cosinus)",
+    disabled=not needs_data
 )
-if not segment_col_global:
-    st.sidebar.caption("ℹ️ Keine Segment-/Cluster-Spalte erkannt – Option „Segments“ ist deaktiviert.")
-else:
-    st.sidebar.caption(f"✅ Segment-/Cluster-Spalte erkannt: „{segment_col_global}“")
 
 cluster_k = st.sidebar.slider(
     "Cluster (nur K-Means)",
     min_value=2, max_value=20, value=8, step=1,
-    help=("Legt fest, in wie viele Gruppen (Cluster) die Punkte bei der K-Means-Methode unterteilt werden.")
+    help="Legt fest, in wie viele Gruppen (Cluster) die Punkte bei der K-Means-Methode unterteilt werden.",
+    disabled=not needs_data
 )
 
-# Bubblegröße nach – dynamisch
+# Bubblegröße nach – dynamisch (wird nach Upload gefüllt/aktiviert)
 size_options = ["Keine Skalierung"]
-if perf_metric_candidates:
-    size_options += perf_metric_candidates
-
 size_by = st.sidebar.selectbox(
     "Bubblegröße nach",
     size_options,
     index=0,
-    help=("Welche Spalte aus der Performance-/Metrik-Datei bestimmt die Blasengröße? 'Keine Skalierung' = konstant.")
+    help="Welche Spalte aus der Performance-/Metrik-Datei bestimmt die Blasengröße? 'Keine Skalierung' = konstant.",
+    disabled=not needs_data
 )
 
 size_method = st.sidebar.radio(
     "Skalierung",
     ["Logarithmisch (log1p)", "Linear (Min–Max)"],
     index=0,
-    help=("Bestimmt, wie die Blasengrößen berechnet werden. Logarithmisch ist meist robuster.")
+    help="Bestimmt, wie die Blasengrößen berechnet werden. Logarithmisch ist meist robuster.",
+    disabled=not needs_data
 )
 
-size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2)
-size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10)
-clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1)
-clip_high = st.sidebar.slider("Perzentil-Grenze oben (%)", 80, 100, 95)
+size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2, disabled=not needs_data)
+size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10, disabled=not needs_data)
+clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1, disabled=not needs_data)
+clip_high = st.sidebar.slider("Perzentil-Grenze oben (%)", 80, 100, 95, disabled=not needs_data)
 
 # Centroid-Optionen
 show_centroid = st.sidebar.checkbox(
     "Zentrum (Centroid) markieren", value=False,
-    help="Markiert den thematischen Schwerpunkt der analysierten URLs.")
+    help="Markiert den thematischen Schwerpunkt der analysierten URLs.",
+    disabled=not needs_data
+)
 with st.sidebar.expander("Erweitert: Zentrum", expanded=False):
     centroid_mode = st.radio(
         "Zentrums-Modus",
@@ -604,76 +610,71 @@ with st.sidebar.expander("Erweitert: Zentrum", expanded=False):
               "• Auto (robust): wählt je nach Streuung automatisch ein robustes Zentrum (Medoid) oder Standard.\n"
               "• Standard: arithmetischer Mittelwert.\n"
               "• Unit-Norm: zuerst alle Vektoren L2-normalisieren, dann mitteln.\n"
-              "• Medoid/Geometric Median: robust gegen Ausreißer (empfohlen bei 'ausfransenden' Themen).")
+              "• Medoid/Geometric Median: robust gegen Ausreißer (empfohlen bei 'ausfransenden' Themen)."),
+        disabled=not needs_data
     )
-centroid_size = st.sidebar.slider("Zentrum-Sterngröße (px)", 10, 40, 22, 1, disabled=not show_centroid)
+centroid_size = st.sidebar.slider("Zentrum-Sterngröße (px)", 10, 40, 22, 1, disabled=(not needs_data or not show_centroid))
 
 # Bubble-Scale und Hintergrundfarbe
-if perf_df is not None and (size_by != "Keine Skalierung"):
-    bubble_scale = st.sidebar.slider("Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05)
-else:
-    bubble_scale = 1.0
-
+bubble_scale = st.sidebar.slider("Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05, disabled=not needs_data)
 bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="#FFFFFF")
 
 # Weitere Exporte
 st.sidebar.markdown("**Weitere Exportmöglichkeiten**")
-
-# Export 1: Paar-Ähnlichkeiten (Cosinus)
 export_csv = st.sidebar.checkbox(
     "Semantisch ähnliche URLs exportieren", value=False,
-    help="Export semantisch ähnlicher URL-Paare mit einer Cosinus Similarity über dem gewählten Schwellenwert als CSV."
+    help="Export semantisch ähnlicher URL-Paare mit einer Cosinus Similarity über dem gewählten Schwellenwert als CSV.",
+    disabled=not needs_data
 )
-
 export_mode = st.sidebar.radio(
     "Export-Methode",
     ["Exakt (sklearn, alle Paare)", "Schnell (FAISS top-k)"],
     index=0,
-    help=("Exakt: berechnet alle Paare (O(N²)).\nSchnell: nutzt FAISS für top-k Nachbarn je URL und filtert dann per Schwelle.")
-    , disabled=not export_csv
+    help=("Exakt: berechnet alle Paare (O(N²)).\nSchnell: nutzt FAISS für top-k Nachbarn je URL und filtert dann per Schwelle."),
+    disabled=not (needs_data and export_csv)
 )
-
 sim_threshold = st.sidebar.slider(
-    "Ähnlichkeitsschwelle (Cosinus)",
-    min_value=0.00, max_value=1.00, value=0.00, step=0.01,
-    help=("Nur Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert werden exportiert."),
-    disabled=not export_csv
+    "Ähnlichkeitsschwelle (Cosinus)", 0.00, 1.00, 0.00, 0.01,
+    help="Nur Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert werden exportiert.",
+    disabled=not (needs_data and export_csv)
 )
-
 faiss_k = st.sidebar.slider("FAISS: top-k pro URL", 5, 200, 50, 5,
-                            help="Wie viele Nachbarn pro URL FAISS liefern soll.", disabled=not (export_csv and export_mode.endswith("FAISS top-k")))
+                            help="Wie viele Nachbarn pro URL FAISS liefern soll.",
+                            disabled=not (needs_data and export_csv and export_mode.endswith("FAISS top-k")))
 
-# Export 2: Low-Relevance
 export_lowrel_csv = st.sidebar.checkbox(
     "Low-Relevance-URLs exportieren", value=False,
-    help=("URLs mit Cosinus-Similarity zum Zentrum unterhalb der Schwelle. Robust mit Medoid/Geometric Median möglich.")
+    help="URLs mit Cosinus-Similarity zum Zentrum unterhalb der Schwelle. Robust mit Medoid/Geometric Median möglich.",
+    disabled=not needs_data
 )
 lowrel_threshold = st.sidebar.slider(
-    "Ähnlichkeitsschwelle zum Zentrum (Cosinus)",
-    min_value=0.00, max_value=1.00, value=0.40, step=0.01,
-    disabled=not export_lowrel_csv
+    "Ähnlichkeitsschwelle zum Zentrum (Cosinus)", 0.00, 1.00, 0.40, 0.01,
+    disabled=not (needs_data and export_lowrel_csv)
 )
 
-# Export 3: Cluster-Qualität
 export_quality = st.sidebar.checkbox(
     "Cluster-Qualität (Intra/Inter) berechnen", value=False,
-    help="Erzeugt Tabellen zu Intra-/Inter-Cluster-Ähnlichkeiten (Mittel/Median) und bietet CSV-Download an."
+    help="Erzeugt Tabellen zu Intra-/Inter-Cluster-Ähnlichkeiten (Mittel/Median) und bietet CSV-Download an.",
+    disabled=not needs_data
 )
 
-# Export-Limits
 unlimited_export = st.sidebar.checkbox(
     "Kein Limit für Export", value=False,
-    help="Hebt die Zeilenbegrenzung auf. Vorsicht: Sehr große CSVs können Browser/Speicher überlasten."
+    help="Hebt die Zeilenbegrenzung auf. Vorsicht: Sehr große CSVs können Browser/Speicher überlasten.",
+    disabled=not needs_data
 )
 if not unlimited_export:
     max_export_rows = st.sidebar.number_input(
         "Max. Zeilen pro Export", min_value=50_000, max_value=5_000_000, step=50_000, value=250_000,
-        help="Begrenzt die Zeilenanzahl in Exporten (Performance & Speicher)."
+        help="Begrenzt die Zeilenanzahl in Exporten (Performance & Speicher).",
+        disabled=not needs_data
     )
 else:
     max_export_rows = None
 
-recalc = st.sidebar.button("Let's Go / Refresh", type="primary")
+recalc = st.sidebar.button("Let's Go / Refresh", type="primary", disabled=not needs_data)
+
+
 
 # =============================
 # Build data (heavy) & cache in session_state
