@@ -15,7 +15,8 @@ SKLEARN_OK = True
 _import_err = None
 try:
     from sklearn.manifold import TSNE
-    from sklearn.cluster import KMeans, DBSCAN
+    from sklearn.decomposition import PCA
+    from sklearn.cluster import KMeans, MiniBatchKMeans, DBSCAN
     from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
     from sklearn.neighbors import NearestNeighbors
 except Exception as e:
@@ -712,23 +713,35 @@ try:
             centroid_mode_eff = None
             X_tsne = X
 
-        # Cosinus (schnell) => Unit-Norm + Euclid (Barnes-Hut)
-        X_for_tsne = l2_normalize_rows(X_tsne) if use_cosine_equivalent else X_tsne
+        def pre_reduce_for_tsne(X_in: np.ndarray, d=50, normalize=False):
+            Xp = l2_normalize_rows(X_in) if normalize else X_in
+            if Xp.shape[1] > d:
+                Xp = PCA(n_components=d, svd_solver="randomized", random_state=42).fit_transform(Xp)
+            return Xp.astype(np.float32, copy=False)
 
-        n_tsne = X_for_tsne.shape[0]
-        perplexity = max(5, min(50, n_tsne // 3, n_tsne - 1))
+        # Cosinus-Äquivalent -> vor PCA normalisieren (wichtig!)
+        X_for_tsne = pre_reduce_for_tsne(X_tsne, d=50, normalize=use_cosine_equivalent)
+
+        # Perplexity robust wählen: < n_samples, sinnvoller Bereich
+        n_samples_tsne = X_for_tsne.shape[0]
+        if n_samples_tsne <= 5:
+            # sollte eigentlich durch earlier check abgefangen sein
+            st.error("Zu wenige Punkte für t-SNE.")
+            st.stop()
+        perplexity = max(5, min(30, n_samples_tsne - 1))
 
         tsne = TSNE(
             n_components=2,
-            metric="euclidean",      # immer euclid für Speed
-            method="barnes_hut",     # schnell
+            metric="euclidean",
+            method="barnes_hut",
             init="pca",
             learning_rate="auto",
-            n_iter=750,
+            n_iter=600,          # kann meist runter
             random_state=42,
             perplexity=perplexity
         )
         tsne_result = tsne.fit_transform(X_for_tsne)
+        n_tsne = int(tsne_result.shape[0])
 
         merged["tsne_x"] = tsne_result[: len(X), 0]
         merged["tsne_y"] = tsne_result[: len(X), 1]
@@ -738,8 +751,21 @@ try:
         segment_col = segment_col_global
 
         if method == "K-Means":
-            kmeans = KMeans(n_clusters=cluster_k, random_state=42)
-            merged["Cluster"] = kmeans.fit_predict(X).astype(str)
+            Xk = l2_normalize_rows(X)
+            n_samples = Xk.shape[0]
+            if n_samples < 1500:
+                km = KMeans(n_clusters=cluster_k, n_init="auto", random_state=42)
+            else:
+                bs = max(512, min(4096, int(n_samples * 0.01)))
+                km = MiniBatchKMeans(
+                    n_clusters=cluster_k,
+                    batch_size=bs,
+                    n_init="auto",
+                    max_iter=100,
+                    random_state=42,
+                    reassignment_ratio=0.01,
+                )
+            merged["Cluster"] = km.fit_predict(Xk).astype(str)
         elif method == "DBSCAN (Cosinus)":
             # Cosinus-Distanzen für DBSCAN
             cos_dist = cosine_distances(l2_normalize_rows(X))
