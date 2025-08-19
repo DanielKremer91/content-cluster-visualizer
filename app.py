@@ -120,12 +120,12 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
 - **Centroid:** thematischen **Schwerpunkt** markieren (roter Stern).
 
 ### 📤 Output (Ergebnisse)
-- **Interaktives t-SNE-Chart** (HTML-Export möglich)  
+- **Interaktives t-SNE-Chart** (HTML-Export möglich)
 - **CSV-Exports (optional):**
-  1. **Semantisch ähnliche URL-Paare** (mit Cosinus-Score, Cosinus-Similarity ≥ Schwellenwert; Schwellenwert frei definierbar).  
-     **Hinweis:** Jedes URL-Paar wird nur einmal exportiert – nicht reziprok (Beispiel: (A,B) im Output, (B,A) nicht).
+  1. **Semantisch ähnliche URL-Paare** (mit Cosinus-Score, Cosinus-Similarity ≥ Schwellenwert; Schwellenwert frei definierbar).<br><br>
+     <strong>Hinweis:</strong> Jedes URL-Paar wird nur einmal exportiert – nicht reziprok. Beispiel: (A,B) ist im Output, (B,A) nicht.
   2. **Low-Relevance-URLs** (Cosinus-Similarity zum Centroid < Schwellenwert), um thematische Ausreißer-URLs „schwarz auf weiß“ vorliegen zu haben
-""")
+""", unsafe_allow_html=True)
 
     st.markdown("""
 <div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
