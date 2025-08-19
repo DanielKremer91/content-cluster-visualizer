@@ -109,6 +109,16 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
 </div>
 """, unsafe_allow_html=True)
 
+
+# --- System-Check: show even if the app stops later ---
+st.sidebar.header("Einstellungen")
+st.sidebar.markdown("### 🔧 System-Check")
+st.sidebar.caption(f"UMAP: {'✅ installiert' if HAS_UMAP else '❌ nicht installiert'}")
+st.sidebar.caption(f"FAISS: {'✅ installiert' if HAS_FAISS else '❌ nicht installiert'}")
+st.sidebar.caption("Python 3.11.13 · NumPy 1.26.4 · scikit-learn 1.4.2")
+st.sidebar.divider()
+
+
 # =============================
 # Utilities
 # =============================
@@ -504,19 +514,6 @@ if perf_file is not None:
         perf_df = None
         perf_metric_candidates = []
 
-# =============================
-# Sidebar Controls (dynamisch)
-# =============================
-st.sidebar.header("Einstellungen")
-
-st.sidebar.markdown("### 🔧 System-Check")
-
-st.sidebar.caption(
-    f"UMAP: {'✅ installiert' if HAS_UMAP else '❌ nicht installiert'}"
-)
-st.sidebar.caption(
-    f"FAISS: {'✅ installiert' if HAS_FAISS else '❌ nicht installiert'}"
-)
 
 # L2-Normalisierung (empfohlen)
 use_l2 = st.sidebar.checkbox(
