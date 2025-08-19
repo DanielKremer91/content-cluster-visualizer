@@ -12,7 +12,7 @@ from sklearn.metrics.pairwise import cosine_similarity, cosine_distances
 import plotly.express as px
 import plotly.graph_objects as go  # für graue Basisschicht & präzise Markersteuerung
 
-# Optional: UMAP & FAISS (werden nur genutzt, wenn installiert)
+# Optional: UMAP & FAISS (nur nutzen, wenn installiert)
 try:
     import umap  # umap-learn
     HAS_UMAP = True
@@ -73,51 +73,38 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
   ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen oder URL-Gruppen clustern zu können – Tipp: im Screaming Frog **Segmente** z. B. anhand der URL-/Verzeichnisstruktur definieren und **mit ausgeben lassen**)
 - **Optional:** *URL-Performance-Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs etc.)  
   ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden. Das Tool erkennt die Spalten automatisch und bietet sie im Dropdown-Menü zur Auswahl an.
-""")
 
-    # >>> WICHTIG-Box <<<
-    st.markdown("""
-<div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
-  <strong>❗WICHTIG:</strong> Achte darauf, dass deine CSV echte Spaltentrenner nutzt (z. B. Tab/Komma) und <em>nicht</em> als Ein-Spalten-Datei vorliegt – das passiert bei Screaming-Frog-Exporten schnell. <br>
-  Gegebenenfalls ist vor dem Upload noch eine kurze Anpassung der <strong>Input-Dateien</strong> notwendig.
-</div>
-""", unsafe_allow_html=True)
-
-    st.markdown("""
 ### ⚙️ Wie funktioniert’s?
 - **2D-Projektion**: *t-SNE* oder *UMAP* projizieren hochdimensionale Embeddings auf 2D, um **Nachbarschaften** und **globale Struktur** sichtbar zu machen.  
-  • **t-SNE**: stark für lokale Nachbarschaften.  
-  • **UMAP**: schneller, skaliert besser, behält globale Struktur eher bei.
+  • **t-SNE**: sehr gut für lokale Nachbarschaften.  
+  • **UMAP**: schneller, skaliert besser, behält eher globale Struktur.
 - **Clustering:** *K-Means* (feste k), *DBSCAN* (dichtebasiert, Cosinus-Distanz) oder vorhandene *Segments*-Spalte nutzen.
-- **Abstände:** *Euklidisch* misst Luftlinie; *Cosinus* misst **Winkel/Ähnlichkeit** (bei L2-Norm = Skalarprodukt).  
+- **Abstände:** *Euklidisch* misst Luftlinie; *Cosinus* misst den **Winkel/Ähnlichkeit** (bei L2-Norm = Skalarprodukt).  
 - **Bubble-Größe:** nach beliebiger **numerischer KPI** aus der Performance-Datei darstellbar.
 - **Suche:** interaktive **URL-Suche** – Treffer werden farbig markiert, restliche Bubbles ausgegraut.  
-- **Centroid:** thematischen **Schwerpunkt** markieren (roter Stern) – wahlweise **robust** (Medoid/Geometric Median).
+- **Centroid:** thematischen **Schwerpunkt** markieren (roter Stern) – auf Wunsch **robust** (Medoid/Geometric Median).
 
-### 📤 Output (Ergebnisse)
-- **Interaktives 2D-Chart** (HTML-Export möglich)  
-- **CSV-Exports (optional):**  
-  1) **Semantisch ähnliche Paare** (Cosinus-Similarity ≥ Schwellenwert) – *Exakt (sklearn, alle Paare)* oder *Schnell (FAISS top‑k)*  
-  2) **Low-Relevance-URLs** (Cosinus-Similarity zum Zentrum < Schwelle), robust auf Wunsch
+### 📤 Output
+- **Interaktives 2D-Chart** (HTML-Export)
+- **CSV-Exports:**  
+  1) **Semantisch ähnliche Paare** (Cosinus-Similarity ≥ Schwelle) – *Exakt (sklearn, alle Paare)* oder *Schnell (FAISS top-k)*  
+  2) **Low-Relevance-URLs** (Cosinus-Similarity zum Zentrum < Schwelle), optional mit robustem Zentrum  
   3) **Cluster-Qualität**: Intra-/Inter-Cluster-Ähnlichkeiten (Mittel/Median) als Tabelle/CSV
 """)
 
-    # Optional: zweite Info-Box
     st.markdown("""
 <div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
-  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong>. Genauigkeit ist entscheidend – Details siehe LinkedIn-Postings. 
+  <strong>💡 Komische Ergebnisse?</strong> Häufig liegt es an der <strong>Embedding-Erzeugung</strong>. Genauigkeit ist entscheidend.
 </div>
 """, unsafe_allow_html=True)
 
-
-# --- System-Check: show even if the app stops later ---
+# --- System-Check: immer sichtbar ---
 st.sidebar.header("Einstellungen")
 st.sidebar.markdown("### 🔧 System-Check")
 st.sidebar.caption(f"UMAP: {'✅ installiert' if HAS_UMAP else '❌ nicht installiert'}")
 st.sidebar.caption(f"FAISS: {'✅ installiert' if HAS_FAISS else '❌ nicht installiert'}")
-st.sidebar.caption("Python 3.11.13 · NumPy 1.26.4 · scikit-learn 1.4.2")
+st.sidebar.caption("Python 3.11.13 · NumPy 1.26.4 · pandas 2.2.2 · scikit-learn 1.4.2")
 st.sidebar.divider()
-
 
 # =============================
 # Utilities
@@ -142,6 +129,7 @@ def robust_read_table(uploaded_file):
         except Exception:
             pass
 
+    # Versuch: Tab + UTF-16 (häufig bei SF)
     try:
         df = _read_csv(raw, sep="\t", encoding="UTF-16")
         if df.shape[1] > 0:
@@ -289,7 +277,6 @@ def autodetect_embedding_column(df: pd.DataFrame, sample=50):
     return None
 
 # --- Centroid-Logik: Auto/Standard/Unit-Norm/Robust ---
-
 def norm_stats(X: np.ndarray):
     norms = np.linalg.norm(X, axis=1)
     p10, p90 = np.percentile(norms, [10, 90])
@@ -335,7 +322,6 @@ def compute_centroid(X: np.ndarray, mode: str):
     # returns (centroid_vector_1d, effective_mode_str)
     if mode.startswith("Auto (robust)"):
         stats = norm_stats(X)
-        # Grobe Heuristik: bei starker Normstreuung oder vielen Ausreißern -> Medoid
         if stats["level"] in ("warn", "high"):
             return medoid_vector(X), "Medoid (Auto)"
         else:
@@ -351,7 +337,6 @@ def compute_centroid(X: np.ndarray, mode: str):
         return medoid_vector(X), "Medoid"
     if mode.startswith("Geometric Median"):
         return geometric_median(X), "Geometric Median"
-    # Standard
     return X.mean(axis=0), "Standard"
 
 # -------------------------------------------------
@@ -375,102 +360,93 @@ emb_file = st.file_uploader("CSV/Excel mit URLs und Embeddings", type=["csv", "x
 st.subheader("2) Optional: Performance-/Metrik-Datei hochladen (z. B. GSC, SISTRIX, Ahrefs)")
 perf_file = st.file_uploader("Performance-/Metrik-CSV/Excel (optional)", type=["csv", "xlsx", "xls"], key="perf")
 
+# -----------------------------
+# Daten einlesen (ohne st.stop)
+# -----------------------------
+needs_data = False
+df = None
+df_valid = None
+segment_col_global = None
+perf_df = None
+perf_metric_candidates = []
+perf_url_col = clicks_col = impressions_col = None
+
 if emb_file is None:
     st.info("Bitte zuerst die Embedding-Datei hochladen.")
-    st.stop()
+else:
+    # Embedding-Datei lesen
+    try:
+        df = robust_read_table(emb_file)
+        st.caption(f"Columns detected (Embedding-Datei): {list(df.columns)}")
+    except Exception as e:
+        st.error(str(e))
+        df = None
 
-# Read embeddings table
-try:
-    df = robust_read_table(emb_file)
-except Exception as e:
-    st.error(str(e))
-    st.stop()
+    if df is not None:
+        # Spalten finden
+        url_col = find_column(URL_CANDIDATES_BASE, df.columns)
+        if url_col is None:
+            for c in df.columns:
+                n = str(c).lower().replace("-", " ")
+                if any(tok in n for tok in ["url", "page", "adresse", "address", "seite", "seiten"]):
+                    url_col = c
+                    break
 
-st.caption(f"Columns detected (Embedding-Datei): {list(df.columns)}")
+        embedding_col = find_column([
+            "ChatGPT Embedding Erzeugung",
+            "ChatGPT Embedding Erzeugung 1",
+            "Embedding",
+            "Embeddings",
+            "Embedding Vector",
+            "OpenAI Embedding",
+            "Extract embeddings from page content",
+        ], df.columns)
+        if embedding_col is None:
+            for c in df.columns:
+                colname = str(c).lower()
+                if ("embedding" in colname) or ("embed" in colname) or ("vector" in colname):
+                    embedding_col = c
+                    break
+        if embedding_col is None:
+            embedding_col = autodetect_embedding_column(df)
 
-# --- Spaltenfindung (robust) ---
-url_col = find_column(URL_CANDIDATES_BASE, df.columns)
-if url_col is None:
-    for c in df.columns:
-        n = str(c).lower().replace("-", " ")
-        if any(tok in n for tok in ["url", "page", "adresse", "address", "seite", "seiten"]):
-            url_col = c
-            break
+        if url_col is None or embedding_col is None:
+            st.error(
+                "❌ URL- oder Embedding-Spalte nicht gefunden.\n\n"
+                f"Gefundene Spalten: {list(df.columns)}\n\n"
+                "Erwarte URL-Spalte (z. B. URL/Adresse/Page) und eine Embedding-Spalte (z. B. 'Embedding' oder eine Liste von Zahlen)."
+            )
+        else:
+            with st.spinner("Verarbeite Embeddings…"):
+                df["embedding_vector"] = df[embedding_col].apply(parse_embedding)
+                df_valid = df[df["embedding_vector"].apply(lambda x: isinstance(x, list) and len(x) > 0)].copy()
+                df_valid["embedding_vector"], dim = normalize_embedding_lengths(df_valid["embedding_vector"])
 
-embedding_col = find_column([
-    "ChatGPT Embedding Erzeugung",
-    "ChatGPT Embedding Erzeugung 1",
-    "Embedding",
-    "Embeddings",
-    "Embedding Vector",
-    "OpenAI Embedding",
-    "Extract embeddings from page content",
-], df.columns)
-if embedding_col is None:
-    for c in df.columns:
-        colname = str(c).lower()
-        if ("embedding" in colname) or ("embed" in colname) or ("vector" in colname):
-            embedding_col = c
-            break
-if embedding_col is None:
-    embedding_col = autodetect_embedding_column(df)
+            if len(df_valid) < 5:
+                st.error("❌ Zu wenige gültige Embeddings. Mindestens 5 erforderlich.")
+            else:
+                embedding_matrix = np.array(df_valid["embedding_vector"].tolist())
+                st.caption(f"✅ Gültige Embeddings: {len(df_valid)} · Vektor-Dim: {embedding_matrix.shape[1]}")
+                needs_data = True
 
-if url_col is None or embedding_col is None:
-    st.error(
-        "❌ URL- oder Embedding-Spalte nicht gefunden.\n\n"
-        f"Gefundene Spalten: {list(df.columns)}\n\n"
-        "Erwarte URL-Spalte (z. B. URL/Adresse/Page) und eine Embedding-Spalte (z. B. 'Embedding' oder eine Liste von Zahlen)."
-    )
-    st.stop()
+                # Segment/Cluster-Spalte erkennen
+                SEGMENT_NAME_CANDIDATES = ["Segmente", "Segment", "Segments", "Cluster"]
+                def detect_segment_col(df_input):
+                    seg = find_column(SEGMENT_NAME_CANDIDATES, df_input.columns)
+                    if seg is None:
+                        for c in df_input.columns:
+                            n = str(c).lower().replace("-", " ").replace("_", " ")
+                            tokens = n.split()
+                            if any(tok in tokens for tok in ["segment", "segments", "cluster"]):
+                                return c
+                    return seg
+                segment_col_global = detect_segment_col(df)
 
-# ---- Segment/Cluster-Spalte vorab erkennen (für UI) ----
-SEGMENT_NAME_CANDIDATES = ["Segmente", "Segment", "Segments", "Cluster"]
-
-def detect_segment_col(df_input):
-    seg = find_column(SEGMENT_NAME_CANDIDATES, df_input.columns)
-    if seg is None:
-        for c in df_input.columns:
-            n = str(c).lower().replace("-", " ").replace("_", " ")
-            tokens = n.split()
-            if any(tok in tokens for tok in ["segment", "segments", "cluster"]):
-                return c
-    return seg
-
-segment_col_global = detect_segment_col(df)
-
-with st.spinner("Verarbeite Embeddings…"):
-    df["embedding_vector"] = df[embedding_col].apply(parse_embedding)
-    df_valid = df[df["embedding_vector"].apply(lambda x: isinstance(x, list) and len(x) > 0)].copy()
-    df_valid["embedding_vector"], dim = normalize_embedding_lengths(df_valid["embedding_vector"])
-
-# Nach erfolgreichem Einlesen und Erzeugen von df_valid:
-st.session_state["__has_data__"] = True
-
-if len(df_valid) < 5:
-    st.error("❌ Zu wenige gültige Embeddings. Mindestens 5 erforderlich.")
-    st.stop()
-
-embedding_matrix = np.array(df_valid["embedding_vector"].tolist())
-st.caption(f"✅ Gültige Embeddings: {len(df_valid)} · Vektor-Dim: {embedding_matrix.shape[1]}")
-
-# =============================
-# Interaktive URL-Suche (nur Darstellung)
-# =============================
-search_q = st.text_input(
-    "🔍 URL-Suche (Teilstring)",
-    value="",
-    help="Markiert Treffer im Plot. Beeinflusst weder Berechnungen noch Exporte."
-)
-
-# Optional: Performance-/Metrik-Datei einlesen + numerische Kandidaten sammeln
-perf_df = None
-perf_url_col = clicks_col = impressions_col = None
-perf_metric_candidates = []
+# Performance-/Metrik-Datei (optional)
 if perf_file is not None:
     try:
         perf_df = robust_read_table(perf_file)
         st.caption(f"Columns detected (Performance-Datei): {list(perf_df.columns)}")
-
         perf_url_col = find_column(URL_CANDIDATES_BASE + URL_CANDIDATES_GSC_EXTRA, perf_df.columns)
         if perf_url_col is None:
             for c in perf_df.columns:
@@ -511,7 +487,6 @@ if perf_file is not None:
                 return (4, x)
 
             perf_metric_candidates = sorted(set(perf_metric_candidates), key=sort_key)
-
     except Exception as e:
         st.warning(f"Performance-/Metrik-Datei konnte nicht verarbeitet werden: {e}")
         perf_df = None
@@ -520,7 +495,6 @@ if perf_file is not None:
 # =============================
 # Sidebar Controls (immer rendern; ggf. disabled bis Daten da sind)
 # =============================
-needs_data = st.session_state.get("__has_data__", False)
 
 # L2-Normalisierung (empfohlen)
 use_l2 = st.sidebar.checkbox(
@@ -553,10 +527,13 @@ if HAS_UMAP and "UMAP" in proj_method:
     umap_min_dist = st.sidebar.slider("UMAP: min_dist", 0.0, 0.99, 0.10, 0.01,
                                       help="Wie dicht Punkte zusammenliegen dürfen. Kleiner = kompaktere Cluster.")
 
-# Cluster-Optionen (Segments erst, wenn später erkannt)
+# Cluster-Optionen
 cluster_options = ["K-Means", "DBSCAN (Cosinus)"]
-# Wir zeigen hier einen Hinweis; echte Erkennung passiert nach Upload.
-st.sidebar.caption("ℹ️ Option „Segments“ erscheint automatisch, sobald eine Segment-/Cluster-Spalte erkannt wurde.")
+if needs_data and segment_col_global:
+    cluster_options.insert(1, "Segments")
+    st.sidebar.caption(f"✅ Segment-/Cluster-Spalte erkannt: „{segment_col_global}“")
+else:
+    st.sidebar.caption("ℹ️ Option „Segments“ erscheint automatisch, sobald eine Segment-/Cluster-Spalte erkannt wurde.")
 
 cluster_method = st.sidebar.selectbox(
     "Clustermethode",
@@ -572,8 +549,10 @@ cluster_k = st.sidebar.slider(
     disabled=not needs_data
 )
 
-# Bubblegröße nach – dynamisch (wird nach Upload gefüllt/aktiviert)
+# Bubblegröße nach – dynamisch
 size_options = ["Keine Skalierung"]
+if perf_metric_candidates:
+    size_options += perf_metric_candidates
 size_by = st.sidebar.selectbox(
     "Bubblegröße nach",
     size_options,
@@ -674,7 +653,14 @@ else:
 
 recalc = st.sidebar.button("Let's Go / Refresh", type="primary", disabled=not needs_data)
 
-
+# =============================
+# Interaktive URL-Suche (nur Darstellung)
+# =============================
+search_q = st.text_input(
+    "🔍 URL-Suche (Teilstring)",
+    value="",
+    help="Markiert Treffer im Plot. Beeinflusst weder Berechnungen noch Exporte."
+)
 
 # =============================
 # Build data (heavy) & cache in session_state
@@ -690,7 +676,7 @@ def _build_hover_cols(merged, metric_col):
 def build_data_and_cache():
     merged = df_valid.copy()
 
-    # Merge Performance-Metriken (alle Kandidaten-Spalten)
+    # Performance-Metriken mergen (alle Kandidaten-Spalten)
     if isinstance(perf_df, pd.DataFrame) and perf_url_col:
         merged["__join"] = merged[url_col].apply(normalize_url)
         perf_local = perf_df.copy()
@@ -717,13 +703,11 @@ def build_data_and_cache():
                             random_state=42)
         proj_input = Xn if umap_metric == "cosine" else X
         Y = reducer.fit_transform(proj_input)
-        centroid_mode_eff = None  # wird unten gesetzt, falls Zentrum aktiviert ist
     else:
         perplexity = int(min(30, max(5, len(merged) // 3)))
         tsne_input = Xn if tsne_metric == "cosine" else X
         tsne = TSNE(n_components=2, metric=tsne_metric, random_state=42, perplexity=perplexity)
         Y = tsne.fit_transform(tsne_input)
-        centroid_mode_eff = None
 
     merged["tsne_x"], merged["tsne_y"] = Y[:, 0], Y[:, 1]
 
@@ -774,14 +758,13 @@ def build_data_and_cache():
         merged["__marker_px"] = max(1, int(size_min * float(bubble_scale)))
 
     # Zentrum optional (Marker-Koordinaten aus 2D-Raum)
-    st.session_state["centroid_in_tsne"] = bool(show_centroid)
     st.session_state["centroid_xy"] = None
     st.session_state["centroid_mode_eff"] = None
 
     if show_centroid:
         c_vec, centroid_mode_eff = compute_centroid(cluster_input, centroid_mode)
         st.session_state["centroid_mode_eff"] = centroid_mode_eff
-        # Näherung: projiziere c_vec in 2D, indem du den gleichen Reducer erneut aufsetzt
+        # Näherung: projiziere c_vec in 2D, indem du denselben Reducer erneut verwendest
         if use_umap:
             reducer2 = umap.UMAP(n_components=2,
                                  n_neighbors=int(umap_n_neighbors),
@@ -791,7 +774,8 @@ def build_data_and_cache():
             Z = reducer2.fit_transform(np.vstack([cluster_input, c_vec[None, :]]))
         else:
             tsne2 = TSNE(n_components=2, metric=tsne_metric, random_state=42, perplexity=min(30, max(5, len(merged) // 3)))
-            Z = tsne2.fit_transform(np.vstack([cluster_input if tsne_metric == "cosine" else X, c_vec[None, :]]))
+            base = cluster_input if tsne_metric == "cosine" else X
+            Z = tsne2.fit_transform(np.vstack([base, c_vec[None, :]]))
         st.session_state["centroid_xy"] = (float(Z[-1, 0]), float(Z[-1, 1]))
 
     # Cache
@@ -803,18 +787,17 @@ def build_data_and_cache():
     st.session_state["highlight_px_cached"] = max(int(size_min * float(bubble_scale)) + 6, 8)
     st.session_state["url_col_cached"] = url_col
 
-
 def render_plot_from_cache(q: str):
     merged = st.session_state.get("merged_cached")
     if merged is None:
-        st.info("Bitte zuerst Einstellungen wählen und auf **Let's Go / Refresh** klicken.")
+        st.info("Lade eine Embedding-Datei und klicke auf **Let's Go / Refresh**, um die Visualisierung zu erzeugen.")
         return
 
     scaled = st.session_state.get("scaled_cached", False)
-    hover_cols = st.session_state.get("hover_cols_cached", {url_col: True, "Cluster": True})
+    hover_cols = st.session_state.get("hover_cols_cached", {})
     title = st.session_state.get("plot_title_cached", "🔍 2D-Projektion der Seiten-Embeddings")
     bg = st.session_state.get("bg_color_cached", "#FFFFFF")
-    url_c = st.session_state.get("url_col_cached", url_col)
+    url_c = st.session_state.get("url_col_cached")
     highlight_px = st.session_state.get("highlight_px_cached", 10)
     centroid_xy = st.session_state.get("centroid_xy", None)
     centroid_mode_eff = st.session_state.get("centroid_mode_eff", None)
@@ -900,7 +883,7 @@ def render_plot_from_cache(q: str):
 # =============================
 # Run (heavy on refresh, light on search)
 # =============================
-if recalc:
+if recalc and needs_data:
     with st.spinner("Berechne Projektion & erstelle Plot…"):
         build_data_and_cache()
         render_plot_from_cache(search_q)
@@ -939,17 +922,14 @@ if export_csv:
                 if not HAS_FAISS:
                     st.error("FAISS ist nicht installiert. Bitte 'faiss-cpu' in requirements aufnehmen oder Exakt-Modus wählen.")
                 else:
-                    # Cosine via Inner Product auf L2-normalisierten Vektoren
                     d = Xn.shape[1]
-                    # Annäherung: HNSW-Index (schnell & gut)
                     index = faiss.IndexHNSWFlat(d, 32)
                     index.hnsw.efConstruction = 200
-                    faiss.normalize_L2(Xn)
+                    faiss.normalize_L2(Xn)  # inner product ~ cosine
                     index.add(Xn)
                     index.hnsw.efSearch = max(64, faiss_k)
                     sims, ids = index.search(Xn, faiss_k)
 
-                    # Paare sammeln (nur i<j) und Schwelle beachten
                     seen = set()
                     n = len(url_list)
                     for i in range(n):
@@ -1053,7 +1033,7 @@ if export_quality:
                 intra_rows.append({"Cluster": c, "N": int(len(idx)), "Intra_Mean": float(np.mean(tril)), "Intra_Median": float(np.median(tril))})
             intra_df = pd.DataFrame(intra_rows)
 
-            # Inter (Matrix)
+            # Inter (Matrix, Mean)
             inter_mat = pd.DataFrame(index=labels, columns=labels, dtype=float)
             for i, ci in enumerate(labels):
                 idx_i = np.where(clusters == ci)[0]
@@ -1064,11 +1044,10 @@ if export_quality:
                     idx_j = np.where(clusters == cj)[0]
                     Xj = Xn[idx_j]
                     if len(idx_i) == 0 or len(idx_j) == 0:
-                        val_mean = val_med = np.nan
+                        val_mean = np.nan
                     else:
                         S = Xi @ Xj.T
                         val_mean = float(np.mean(S))
-                        val_med = float(np.median(S))
                     inter_mat.loc[ci, cj] = val_mean
                     inter_mat.loc[cj, ci] = val_mean
 
