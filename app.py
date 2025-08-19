@@ -509,6 +509,15 @@ if perf_file is not None:
 # =============================
 st.sidebar.header("Einstellungen")
 
+st.sidebar.markdown("### 🔧 System-Check")
+
+st.sidebar.caption(
+    f"UMAP: {'✅ installiert' if HAS_UMAP else '❌ nicht installiert'}"
+)
+st.sidebar.caption(
+    f"FAISS: {'✅ installiert' if HAS_FAISS else '❌ nicht installiert'}"
+)
+
 # L2-Normalisierung (empfohlen)
 use_l2 = st.sidebar.checkbox(
     "Vektoren L2-normalisieren (empfohlen)", value=True,
