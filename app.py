@@ -106,7 +106,7 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
     st.markdown("""
 <div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
   <strong>❗WICHTIG:</strong> Achte darauf, dass deine CSV echte Spaltentrenner nutzt (z. B. Tab/Komma) und <em>nicht</em> als Ein-Spalten-Datei vorliegt – das passiert bei Screaming-Frog-Exporten schnell. <br>
-  Gegebenenfalls ist vor dem Upload noch eine kurze Anpassung der <strong>Input-Dateien</strong> notwendig.
+  Gegebenenfalls ist vor dem Upload noch eine kurze Anpassung der <strong>Input-Dateien</strong> notwendig. Wenn du die Meldung "❌ Zu wenige gültige Embeddings. Mindestens 5 erforderlich." siehst, ist genau das der Fall!
 </div>
 """, unsafe_allow_html=True)
 
