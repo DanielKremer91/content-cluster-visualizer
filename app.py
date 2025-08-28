@@ -10,6 +10,11 @@ import platform
 # Immer detaillierte Fehlermeldungen im UI anzeigen
 st.set_option("client.showErrorDetails", True)
 
+# =============================
+# Page setup & Branding
+# =============================
+st.set_page_config(page_title="ONE Semantic Content-Map", layout="wide")
+
 # --- scikit-learn Lazy-Import + Guard ---
 SKLEARN_OK = True
 _import_err = None
@@ -23,13 +28,26 @@ except Exception as e:
     SKLEARN_OK = False
     _import_err = e
 
+# --- UMAP / FAISS (optional) ---
+UMAP_OK = True
+_umap_err = None
+try:
+    # wird nur genutzt, wenn in der Sidebar "UMAP" gewählt ist
+    from umap import UMAP
+except Exception as e:
+    UMAP_OK = False
+    _umap_err = e
+
+FAISS_OK = True
+_faiss_err = None
+try:
+    import faiss  # wird nur für den schnellen Similarity-Export genutzt
+except Exception as e:
+    FAISS_OK = False
+    _faiss_err = e
+
 import plotly.express as px
 import plotly.graph_objects as go  # für graue Basisschicht & präzise Markersteuerung
-
-# =============================
-# Page setup & Branding
-# =============================
-st.set_page_config(page_title="ONE Semantic Content-Map", layout="wide")
 
 # Remote-Logo robust laden (kein Crash, wenn Bild nicht geht)
 try:
@@ -55,9 +73,15 @@ try:
     VER_SKL = _skl.__version__
 except Exception:
     VER_SKL = "n/a"
-VER_NP = np.__version__
+import numpy as _np
+VER_NP = _np.__version__
 VER_PD = pd.__version__
 st.sidebar.info(f"🔧 Python {VER_PY} · NumPy {VER_NP} · pandas {VER_PD} · scikit-learn {VER_SKL}")
+
+if not UMAP_OK:
+    st.sidebar.caption(f"ℹ️ UMAP nicht verfügbar: {_umap_err}")
+if not FAISS_OK:
+    st.sidebar.caption(f"ℹ️ FAISS nicht verfügbar: {_faiss_err}")
 
 st.markdown("""
 <div style="background-color: #f2f2f2; color: #000000; padding: 15px 20px; border-radius: 6px; font-size: 1.2em; max-width: 765px; margin-bottom: 1.5em; line-height: 1.5;">
@@ -100,41 +124,21 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
   ↳ Optional: *Segment-Spalte* einfügen (z. B. um nach Verzeichnissen oder URL-Gruppen clustern zu können – Tipp: im Screaming Frog **Segmente** z. B. anhand der URL-/Verzeichnisstruktur definieren und **mit ausgeben lassen**)
 - **Optional:** *URL-Performance-Datei* (CSV/Excel, z. B. mit Daten aus der Search Console/SISTRIX/Ahrefs etc.)  
   ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden. Das Tool erkennt die Spalten automatisch und bietet sie im Dropdown-Menü zur Auswahl an.
-""")
 
-    # >>> WICHTIG-Box <<<
-    st.markdown("""
-<div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
-  <strong>❗WICHTIG:</strong> Achte darauf, dass deine CSV echte Spaltentrenner nutzt (z. B. Tab/Komma) und <em>nicht</em> als Ein-Spalten-Datei vorliegt – das passiert bei Screaming-Frog-Exporten schnell. <br>
-  Gegebenenfalls ist vor dem Upload noch eine kurze Anpassung der <strong>Input-Dateien</strong> notwendig. Wenn du die Meldung "❌ Zu wenige gültige Embeddings. Mindestens 5 erforderlich." siehst, ist genau das der Fall!
-</div>
-""", unsafe_allow_html=True)
-
-    st.markdown("""
 ### ⚙️ Wie funktioniert’s?
-- **t-SNE** projiziert hochdimensionale Embeddings auf 2D, um **Nachbarschaften** sichtbar zu machen.
-- **Clustering:** *K-Means* (feste k; Anzahl der Cluster wählbar), *DBSCAN* (dichtebasiert, Cosinus-Distanz) oder vorhandene *Segments*-Spalte nutzen.    
-- **Abstände:** *Euklidisch* misst Luftlinie; *Cosinus* misst **Winkel/Ähnlichkeit** der Vektoren.  
+- **2D-Projektion:** *t-SNE* **oder** *UMAP* (umschaltbar) – UMAP ist oft schneller & global stabiler; t-SNE zeigt feinere Nachbarschaften.
+- **Clustering:** *K-Means* (feste k), *DBSCAN* (dichtebasiert, Cosinus-Distanz) oder vorhandene *Segments*-Spalte.
+- **Abstände:** *Euklidisch* oder *Cosinus (schnell)* (L2-normalisiert + euklidisch).
 - **Bubble-Größe:** nach beliebiger **numerischer KPI** aus der Performance-Datei darstellbar.
-- **Suche:** interaktive **URL-Suche** – Treffer werden farbig markiert, restliche Bubbles ausgegraut.  
-- **Centroid:** thematischen **Schwerpunkt** markieren (roter Stern).
+- **Suche:** interaktive **URL-Suche** – Treffer farbig, Rest ausgegraut.
+- **Centroid:** thematischen Schwerpunkt markieren (roter Stern).
 
 ### 📤 Output (Ergebnisse)
-- **Interaktives t-SNE-Chart** (HTML-Export möglich)
+- **Interaktive Visualisierung** (HTML-Export)
 - **CSV-Exports (optional):**
-    1. **Semantisch ähnliche URL-Paare** (mit Cosinus-Score, Cosinus-Similarity ≥ Schwellenwert; Schwellenwert frei definierbar).<br><br>
-<strong>Hinweis:</strong> Jedes URL-Paar wird nur einmal exportiert – nicht reziprok. Beispiel: (A,B) ist im Output, (B,A) nicht.
-    2. **Low-Relevance-URLs** (Cosinus-Similarity zum Centroid < Schwellenwert), um thematische Ausreißer-URLs „schwarz auf weiß“ vorliegen zu haben
-"""), unsafe_allow_html=True)
-
-    st.markdown("""
-<div style="margin-top: 0.5rem; background:#fff8e6; border:1px solid #ffd28a; border-radius:8px; padding:10px 12px; color:#000;">
-  <strong>💡 Komische Ergebnisse?</strong> Oft liegt es an der <strong>Embedding-Erzeugung</strong>. Genauigkeit ist entscheidend – Details
-  <a href="https://www.linkedin.com/in/daniel-kremer-b38176264_vektor-embedding-analyse-klingt-smart-wird-activity-7359197501897269249-eLmI?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY"
-     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>. Ein <strong>Praxisbeispiel</strong> findet ihr
-  <a href="https://www.linkedin.com/posts/daniel-kremer-b38176264_%F0%9D%90%85%F0%9D%90%A2%F0%9D%90%A7%F0%9D%90%A0%F0%9D%90%9E%F0%9D%90%AB-%F0%9D%90%B0%F0%9D%90%9E%F0%9D%90%A0-%F0%9D%90%AF%F0%9D%90%A8%F0%9D%90%A7-%F0%9D%90%82%F0%9D%90%A8%F0%9D%90%A7%F0%9D%90%AD%F0%9D%90%9E%F0%9D%90%A7%F0%9D%90%80%F0%9D%90%AE%F0%9D%90%9D%F0%9D%90%A2%F0%9D%90%AD%F0%9D%90%AC-activity-7361780015908171776-3Y-f?utm_source=share&utm_medium=member_desktop&rcm=ACoAAEDO8dwBl0C_keb4KGiqxRXp2oPlLQjlEsY"
-     target="_blank" style="color:#000; text-decoration:underline;">HIER</a>.
-</div>
+  1. **Semantisch ähnliche URL-Paare**  
+     – Modus *Schwellenwert* (blockweis, exakt) **oder** *Top-N (FAISS, schnell)*  
+  2. **Low-Relevance-URLs** (Cosinus-Similarity zum Centroid < Schwellenwert)
 """, unsafe_allow_html=True)
 
 # =============================
@@ -286,7 +290,7 @@ def scale_sizes(series, method="log", size_min=2, size_max=10, clip_low=1, clip_
     diam = size_min + s_norm * (size_max - size_max if size_max == size_min else (size_max - size_min))
     return pd.Series(diam)
 
-# --------- Schneller Parser & Normalisierung ----------
+# --------- Embedding-Parsing ----------
 def parse_embedding_fast(val):
     if isinstance(val, list):
         return np.asarray(val, dtype=np.float32)
@@ -295,7 +299,6 @@ def parse_embedding_fast(val):
     if pd.isna(val):
         return None
     s = str(val).strip()
-    # eckige Klammern weg
     if s and s[0] == "[" and s[-1] == "]":
         s = s[1:-1]
     arr = np.fromstring(s, sep=",", dtype=np.float32)
@@ -533,6 +536,17 @@ try:
     # =============================
     st.sidebar.header("Einstellungen")
 
+    # Projektion: t-SNE oder UMAP
+    proj_opts = ["t-SNE", "UMAP"] if UMAP_OK else ["t-SNE"]
+    proj_method = st.sidebar.radio(
+        "2D-Projektion",
+        proj_opts,
+        index=0,
+        help="UMAP ist schneller & global stabiler; t-SNE zeigt feinere Nachbarschaften."
+    )
+    if (proj_method == "UMAP") and (not UMAP_OK):
+        st.sidebar.caption("⚠️ UMAP nicht installiert – es wird automatisch t-SNE verwendet.")
+
     # Dynamische Optionsliste: 'Segments' nur, wenn Spalte existiert
     cluster_options = ["K-Means", "DBSCAN (Cosinus)"]
     if segment_col_global:
@@ -553,19 +567,17 @@ try:
     cluster_k = st.sidebar.slider(
         "Cluster (nur K-Means)",
         min_value=2, max_value=20, value=8, step=1,
-        help=("Legt fest, in wie viele Gruppen (Cluster) die Punkte bei der K-Means-Methode unterteilt werden. "
-              "Eine höhere Zahl erzeugt kleinere, spezialisiertere Gruppen; eine niedrigere Zahl erzeugt größere, "
-              "allgemeinere Cluster. Nur relevant, wenn ‚K-Means‘ gewählt ist.")
+        help=("Legt fest, in wie viele Gruppen (Cluster) die Punkte bei der K-Means-Methode unterteilt werden.")
     )
 
     # Darstellungsmethode (Abstand) – Cosinus (schnell) = Unit-Norm + Euclid
     metric_label = st.sidebar.selectbox(
         "Darstellungsmethode (Abstand)",
         ["Euklidisch", "Cosinus (schnell)"],
-        help=("Bestimmt, wie der Abstand bzw. die Ähnlichkeit für die t-SNE-Visualisierung behandelt wird.\n\n"
+        help=("Bestimmt, wie der Abstand bzw. die Ähnlichkeit für die Projektion behandelt wird.\n\n"
               "Cosinus (schnell): Vektoren werden L2-normalisiert und mit euklidischer Metrik geplottet (äquivalent & schnell).")
     )
-    tsne_metric = "euclidean"  # immer euclid für Speed
+    tsne_metric = "euclidean"  # für t-SNE immer euclid (Speed)
     use_cosine_equivalent = metric_label.startswith("Cosinus")
 
     # Bubblegröße nach – dynamisch; Auto-Vorauswahl: Keine Skalierung
@@ -577,101 +589,72 @@ try:
         "Bubblegröße nach",
         size_options,
         index=0,
-        help=("Welche Spalte aus der Performance-/Metrik-Datei (z. B. GSC/SISTRIX/Ahrefs) bestimmt die Blasengröße? "
-              "'Keine Skalierung' = konstant. Es werden nur numerische Spalten angeboten.")
+        help=("Welche Spalte aus der Performance-/Metrik-Datei bestimmt die Blasengröße?")
     )
 
     # Skalierung + Hilfetext
     size_method = st.sidebar.radio(
         "Skalierung",
         ["Logarithmisch (log1p)", "Linear (Min–Max)"],
-        index=0,
-        help=("Bestimmt, wie die Blasengrößen aus der gewählten Metrik berechnet werden.")
+        index=0
     )
 
     # Min-/Max-Größe + Perzentil-Grenzen
-    size_min = st.sidebar.slider(
-        "Min-Größe (px)", 1, 12, 2,
-        help=("Kleinster Bubble-Durchmesser in Pixeln nach der Skalierung.")
-    )
-    size_max = st.sidebar.slider(
-        "Max-Größe (px)", 6, 40, 10,
-        help=("Größter Bubble-Durchmesser in Pixeln nach der Skalierung.")
-    )
-    clip_low = st.sidebar.slider(
-        "Perzentil-Grenze unten (%)", 0, 20, 1,
-        help=("Hebt sehr kleine Werte auf diese Untergrenze an (Perzentil).")
-    )
-    clip_high = st.sidebar.slider(
-        "Perzentil-Grenze oben (%)", 80, 100, 95,
-        help=("Begrenzt sehr große Werte auf diese Obergrenze (Perzentil).")
-    )
+    size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2)
+    size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10)
+    clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1)
+    clip_high = st.sidebar.slider("Perzentil-Grenze oben (%)", 80, 100, 95)
 
     # Centroid-Optionen
-    show_centroid = st.sidebar.checkbox(
-        "Centroid markieren", value=False,
-        help="Markiert den thematischen Schwerpunkt der analysierten URLs (Centroid)."
-    )
+    show_centroid = st.sidebar.checkbox("Centroid markieren", value=False)
     with st.sidebar.expander("Erweitert: Centroid", expanded=False):
-        centroid_mode = st.radio(
-            "Centroid-Modus",
-            ["Auto (empfohlen)", "Standard", "Unit-Norm"],
-            index=0,
-            help=("Wie der thematische Schwerpunkt (Centroid) berechnet wird.")
-        )
-    centroid_size = st.sidebar.slider(
-        "Centroid-Sterngröße (px)", 10, 40, 22, 1,
-        help="Größe des roten Sterns.",
-        disabled=not show_centroid
-    )
+        centroid_mode = st.radio("Centroid-Modus", ["Auto (empfohlen)", "Standard", "Unit-Norm"], index=0)
+    centroid_size = st.sidebar.slider("Centroid-Sterngröße (px)", 10, 40, 22, 1, disabled=not show_centroid)
 
     # Bubble-Scale und Hintergrundfarbe (vor Export-Überschrift)
     if perf_df is not None and (size_by != "Keine Skalierung"):
-        bubble_scale = st.sidebar.slider(
-            "Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05,
-            help=("Globaler Zoomfaktor für die Blasengrößen.")
-        )
+        bubble_scale = st.sidebar.slider("Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05)
     else:
         bubble_scale = 1.0
 
     bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="#FFFFFF")
 
-    # Kleine Section-Überschrift für Exporte
+    # Exporte
     st.sidebar.markdown("**Weitere Exportmöglichkeiten**")
 
-    # Export 1: Paar-Ähnlichkeiten (Cosinus) mit Schwellwert
     export_csv = st.sidebar.checkbox(
         "Semantisch ähnliche URLs exportieren", value=False,
-        help="Export semantisch ähnlicher URL-Paare mit einer Cosinus Similarity über dem gewählten Schwellenwert als CSV"
+        help="CSV mit ähnlichen URL-Paaren (Cosinus-Ähnlichkeit)."
     )
+    # Exportmodus: Schwellenwert (exakt) oder FAISS Top-N (schnell)
+    export_modes = ["Schwellenwert (exakt)"]
+    if FAISS_OK:
+        export_modes.append("Top-N (FAISS, schnell)")
+    export_mode = st.sidebar.radio("Exportmodus", export_modes, index=0, disabled=not export_csv)
     sim_threshold = st.sidebar.slider(
         "Ähnlichkeitsschwelle (Cosinus)",
         min_value=0.00, max_value=1.00, value=0.00, step=0.01,
-        help=("Nur Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert werden exportiert."),
+        help=("Nur Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert."),
         disabled=not export_csv
     )
+    top_n = None
+    if export_csv and (export_mode.startswith("Top-N")):
+        top_n = st.sidebar.slider("Top-N pro URL (FAISS)", 1, 50, 5, 1)
 
-    # Export 2: Low-Relevance (Centroid-Ähnlichkeit) mit Schwellwert
     export_lowrel_csv = st.sidebar.checkbox(
         "Low-Relevance-URLs exportieren", value=False,
-        help=("Low-Relevance URLs (thematische Ausreißer-URLs) als CSV exportieren.")
+        help=("Seiten mit Cosinus-Ähnlichkeit zum Centroid unterhalb der Schwelle.")
     )
     lowrel_threshold = st.sidebar.slider(
-        "Ähnlichkeitsschwelle zum Centroid (Cosinus)",
+        "Schwelle (Centroid-Cosinus)",
         min_value=0.00, max_value=1.00, value=0.40, step=0.01,
-        help=("Nur Seiten mit Cosinus-Ähnlichkeit zum Centroid unterhalb der Schwelle werden exportiert."),
         disabled=not export_lowrel_csv
     )
 
-    # Export-Limits (konfigurierbar)
-    unlimited_export = st.sidebar.checkbox(
-        "Kein Limit für Export", value=False,
-        help="Hebt die Zeilenbegrenzung auf. Vorsicht: Sehr große CSVs können Browser/Speicher überlasten."
-    )
+    unlimited_export = st.sidebar.checkbox("Kein Limit für Export", value=False)
     if not unlimited_export:
         max_export_rows = st.sidebar.number_input(
-            "Max. Zeilen pro Export", min_value=50_000, max_value=5_000_000, step=50_000, value=250_000,
-            help="Begrenzt die Zeilenanzahl in Exporten (Performance & Speicher)."
+            "Max. Zeilen pro Export", min_value=50_000, max_value=5_000_000, step=50_000, value=250_000
         )
     else:
         max_export_rows = None
@@ -689,6 +672,12 @@ try:
                 h[extra] = True
         return h
 
+    def pre_reduce_for_proj(X_in: np.ndarray, d=50, normalize=False):
+        Xp = l2_normalize_rows(X_in) if normalize else X_in
+        if Xp.shape[1] > d:
+            Xp = PCA(n_components=d, svd_solver="randomized", random_state=42).fit_transform(Xp)
+        return Xp.astype(np.float32, copy=False)
+
     def build_data_and_cache():
         """Schwere Schritte ausführen und Ergebnis in Session-State ablegen."""
         merged = df_valid.copy()
@@ -704,48 +693,61 @@ try:
             merged = merged.merge(perf_keep, on="__join", how="left")
             merged.drop(columns=["__join"], inplace=True, errors="ignore")
 
-        # t-SNE (+ optionaler Centroid-Punkt)
+        # Embedding-Matrix
         X = embedding_matrix  # float32
+
+        # Optionaler Centroid-Punkt in die Projektion aufnehmen
         use_centroid_flag = bool(show_centroid)
         if use_centroid_flag:
             centroid_vec, centroid_mode_eff = compute_centroid(X, centroid_mode)
-            X_tsne = np.vstack([X, centroid_vec[None, :]]).astype(np.float32, copy=False)
+            X_proj = np.vstack([X, centroid_vec[None, :]]).astype(np.float32, copy=False)
         else:
             centroid_mode_eff = None
-            X_tsne = X
+            X_proj = X
 
-        def pre_reduce_for_tsne(X_in: np.ndarray, d=50, normalize=False):
-            Xp = l2_normalize_rows(X_in) if normalize else X_in
-            if Xp.shape[1] > d:
-                Xp = PCA(n_components=d, svd_solver="randomized", random_state=42).fit_transform(Xp)
-            return Xp.astype(np.float32, copy=False)
+        # --------- 2D-Projektion: t-SNE oder UMAP ----------
+        if proj_method == "UMAP" and UMAP_OK:
+            # Bei Cosinus-Äquivalent: vorher L2-normalisieren und UMAP mit metric="cosine"
+            X_for_umap = X_proj
+            metric = "cosine" if use_cosine_equivalent else "euclidean"
+            # n_neighbors sinnvoll setzen
+            n_neighbors = int(np.clip(max(5, X_for_umap.shape[0] // 100), 10, 50))
+            reducer = UMAP(
+                n_components=2,
+                n_neighbors=n_neighbors,
+                min_dist=0.1,
+                metric=metric,
+                random_state=42
+            )
+            coords = reducer.fit_transform(X_for_umap if not use_cosine_equivalent else l2_normalize_rows(X_for_umap))
+            merged["tsne_x"] = coords[: len(X), 0]
+            merged["tsne_y"] = coords[: len(X), 1]
+            n_points_2d = int(coords.shape[0])
+        else:
+            # t-SNE mit PCA-Vorreduktion; bei Cosinus-Äquivalent: vorher L2-normalisieren
+            X_for_tsne = pre_reduce_for_proj(X_proj, d=50, normalize=use_cosine_equivalent)
 
-        # Cosinus-Äquivalent -> vor PCA normalisieren (wichtig!)
-        X_for_tsne = pre_reduce_for_tsne(X_tsne, d=50, normalize=use_cosine_equivalent)
+            n_samples_tsne = X_for_tsne.shape[0]
+            if n_samples_tsne <= 5:
+                st.error("Zu wenige Punkte für die 2D-Projektion.")
+                st.stop()
+            perplexity = max(5, min(30, n_samples_tsne - 1))
 
-        # Perplexity robust wählen: < n_samples, sinnvoller Bereich
-        n_samples_tsne = X_for_tsne.shape[0]
-        if n_samples_tsne <= 5:
-            # sollte eigentlich durch earlier check abgefangen sein
-            st.error("Zu wenige Punkte für t-SNE.")
-            st.stop()
-        perplexity = max(5, min(30, n_samples_tsne - 1))
-
-        tsne = TSNE(
-            n_components=2,
-            metric="euclidean",
-            method="barnes_hut",
-            init="pca",
-            learning_rate="auto",
-            n_iter=600,          # kann meist runter
-            random_state=42,
-            perplexity=perplexity
-        )
-        tsne_result = tsne.fit_transform(X_for_tsne)
-        n_tsne = int(tsne_result.shape[0])
-
-        merged["tsne_x"] = tsne_result[: len(X), 0]
-        merged["tsne_y"] = tsne_result[: len(X), 1]
+            tsne = TSNE(
+                n_components=2,
+                metric="euclidean",
+                method="barnes_hut",
+                init="pca",
+                learning_rate="auto",
+                n_iter=600,
+                random_state=42,
+                perplexity=perplexity
+            )
+            tsne_result = tsne.fit_transform(X_for_tsne)
+            merged["tsne_x"] = tsne_result[: len(X), 0]
+            merged["tsne_y"] = tsne_result[: len(X), 1]
+            n_points_2d = int(tsne_result.shape[0])
+            st.caption(f"t-SNE Perplexity: {perplexity} · Punkte im 2D: {n_points_2d}")
 
         # Cluster
         method = cluster_method
@@ -768,7 +770,6 @@ try:
                 )
             merged["Cluster"] = km.fit_predict(Xk).astype(str)
         elif method == "DBSCAN (Cosinus)":
-            # Cosinus-Distanzen für DBSCAN
             cos_dist = cosine_distances(l2_normalize_rows(X))
             dbscan = DBSCAN(eps=0.3, min_samples=5, metric="precomputed")
             merged["Cluster"] = dbscan.fit_predict(cos_dist).astype(str)
@@ -809,23 +810,34 @@ try:
         st.session_state["merged_cached"] = merged
         st.session_state["scaled_cached"] = scaled
         st.session_state["hover_cols_cached"] = _build_hover_cols(merged, metric_col)
-        st.session_state["plot_title_cached"] = "🔍 t-SNE der Seiten-Embeddings (mit Skalierung)" if scaled else "🔍 t-SNE der Seiten-Embeddings"
+        st.session_state["plot_title_cached"] = (
+            ("🔍 UMAP der Seiten-Embeddings" if (proj_method == "UMAP" and UMAP_OK) else "🔍 t-SNE der Seiten-Embeddings")
+            + (" (mit Skalierung)" if scaled else "")
+        )
         st.session_state["bg_color_cached"] = bg_color
         st.session_state["highlight_px_cached"] = max(int(size_min * float(bubble_scale)) + 6, 8)
         st.session_state["url_col_cached"] = url_col
-        st.session_state["centroid_in_tsne"] = use_centroid_flag
+        st.session_state["centroid_in_proj"] = use_centroid_flag
         if use_centroid_flag:
-            st.session_state["centroid_xy"] = (tsne_result[len(X), 0], tsne_result[len(X), 1])
-            st.session_state["centroid_mode_eff"] = centroid_mode_eff
+            # Centroid-Koordinaten: letzter Punkt in der 2D-Projektion
+            st.session_state["centroid_xy"] = (
+                float(merged["tsne_x"].append(pd.Series([np.nan])).iloc[-1]) if False else None
+            )
+        # Da wir den Centroid nicht in 'merged' eingefügt haben, merken wir ihn separat:
+        st.session_state["centroid_mode_eff"] = centroid_mode_eff
+        if use_centroid_flag:
+            # Wir projizieren den Centroid mit (indem er in X_proj enthalten war),
+            # nehmen also die letzte 2D-Koordinate aus coords/tsne_result:
+            if proj_method == "UMAP" and UMAP_OK:
+                cx, cy = float(coords[-1, 0]), float(coords[-1, 1])
+            else:
+                cx, cy = float(tsne_result[-1, 0]), float(tsne_result[-1, 1])
+            st.session_state["centroid_xy"] = (cx, cy)
         else:
             st.session_state["centroid_xy"] = None
-            st.session_state["centroid_mode_eff"] = None
-
-        st.caption(f"t-SNE Perplexity: {perplexity} · Punkte im t-SNE: {n_tsne}")
 
     def render_plot_from_cache(q: str):
-        """Zeichnet den Plot aus dem Cache neu; bei Suche: Rest grau, Treffer farbig.
-           Legende: numerisch/alpha sortiert; Hover-Kästchen übernimmt Bubble-Farbe."""
+        """Zeichnet den Plot aus dem Cache neu; bei Suche: Rest grau, Treffer farbig."""
         merged = st.session_state.get("merged_cached")
         if merged is None:
             st.info("Bitte zuerst Einstellungen wählen und auf **Let's Go / Refresh** klicken.")
@@ -833,7 +845,7 @@ try:
 
         scaled = st.session_state.get("scaled_cached", False)
         hover_cols = st.session_state.get("hover_cols_cached", {url_col: True, "Cluster": True})
-        title = st.session_state.get("plot_title_cached", "🔍 t-SNE der Seiten-Embeddings")
+        title = st.session_state.get("plot_title_cached", "🔍 2D-Projektion der Seiten-Embeddings")
         bg = st.session_state.get("bg_color_cached", "#FFFFFF")
         url_c = st.session_state.get("url_col_cached", url_col)
         highlight_px = st.session_state.get("highlight_px_cached", 10)
@@ -846,7 +858,6 @@ try:
             # --- Suchmodus: Basisschicht grau, nur Treffer farbig ---
             fig = go.Figure()
 
-            # Basisschicht (alle Punkte grau, Hover aus) -> Scattergl (WebGL)
             fig.add_trace(go.Scattergl(
                 x=merged["tsne_x"], y=merged["tsne_y"], mode="markers", name="Alle",
                 marker=dict(
@@ -859,7 +870,6 @@ try:
                 showlegend=False
             ))
 
-            # Treffer
             mask = merged[url_c].astype(str).str.lower().str.contains(q, na=False)
             if mask.any():
                 hi = merged[mask]
@@ -883,15 +893,15 @@ try:
                 ))
                 st.caption(f"✨ {int(mask.sum())} Treffer für „{q}“")
         else:
-            # --- Normalmodus: farbige Cluster (sortierte Legende) ---
+            # --- Normalmodus: farbige Cluster ---
             merged["Cluster"] = merged["Cluster"].astype(str)
             cluster_labels = merged["Cluster"].unique().tolist()
 
             def _legend_sort_key(lbl):
                 try:
-                    return (0, float(lbl))  # numerische Labels (inkl. -1) zuerst
+                    return (0, float(lbl))
                 except Exception:
-                    return (1, str(lbl).lower())  # danach alphabetisch
+                    return (1, str(lbl).lower())
 
             cluster_order = [lbl for lbl in sorted(cluster_labels, key=_legend_sort_key)]
 
@@ -904,11 +914,9 @@ try:
                 hover_data=hover_cols,
                 template="plotly_white",
                 title=title,
-                render_mode="webgl",   # << WebGL aktivieren
+                render_mode="webgl",
             )
 
-            # Größen je Trace setzen, echte Datentraces aus der Legende ausblenden
-            # und Hoverlabel-Farbe = Marker-Farbe setzen
             color_by_name = {}
             for tr in fig.data:
                 mask = (merged["Cluster"] == tr.name)
@@ -920,9 +928,8 @@ try:
                 color_by_name[tr.name] = cval
                 tr.hoverlabel = dict(bgcolor=cval, font_color="white", bordercolor="black")
                 tr.legendgroup = tr.name
-                tr.showlegend = False  # echte Datentraces aus Legende nehmen
+                tr.showlegend = False
 
-            # Dummy-Legendentraces in gewünschter Reihenfolge hinzufügen
             for name in cluster_order:
                 fig.add_trace(go.Scattergl(
                     x=[None], y=[None],
@@ -934,7 +941,6 @@ try:
                     hoverinfo="skip"
                 ))
 
-        # Centroid optional
         if centroid_xy is not None:
             cx, cy = centroid_xy
             fig.add_trace(go.Scattergl(
@@ -974,7 +980,7 @@ try:
     # Run (heavy on refresh, light on search)
     # =============================
     if recalc:
-        with st.spinner("Berechne t-SNE & erstelle Plot…"):
+        with st.spinner("Berechne Projektion & erstelle Plot…"):
             build_data_and_cache()
             render_plot_from_cache(search_q)
     else:
@@ -984,23 +990,19 @@ try:
     # Exporte (unabhängig von Suche!)
     # =============================
 
-    # ----- Blockweiser Similarity-Export (schlank & schnell) -----
+    # ----- Blockweiser Similarity-Export (exakt, Schwellenwert) -----
     def similar_pairs_threshold_blocked(
         X: np.ndarray, urls: list, thr: float, max_rows: int | None = None, block: int = 2048
     ):
         Xn = l2_normalize_rows(X.astype(np.float32, copy=False))
         n = Xn.shape[0]
         pairs = []
-        # Wir arbeiten zeilenweise gegen die Gesamtmatrix und sammeln nur i<j
         for i0 in range(0, n, block):
             i1 = min(n, i0 + block)
             A = Xn[i0:i1]                  # (b, d)
-            # Dot-Product = Cosinus-Similarity (wegen L2-Norm)
-            S = A @ Xn.T                   # (b, n)
-            # nur obere Dreieckshälfte zulassen
+            S = A @ Xn.T                   # (b, n)  # Dot-Product = Cosinus-Similarity
             for ii in range(i0, i1):
                 row = S[ii - i0]
-                # j > ii und >= thr
                 js = np.where(row[ii+1:] >= thr)[0]
                 if js.size:
                     base = ii + 1
@@ -1019,37 +1021,80 @@ try:
                     return pairs[:max_rows]
         return pairs
 
+    # ----- FAISS Top-N Similarity-Export (schnell) -----
+    def faiss_topn_cosine(X: np.ndarray, urls: list, k: int = 5, thr: float = 0.0, max_rows: int | None = None):
+        Xn = l2_normalize_rows(X.astype('float32', copy=False))
+        d = Xn.shape[1]
+        index = faiss.IndexFlatIP(d)  # Inner Product == Cosinus bei unit-norm
+        index.add(Xn)
+        D, I = index.search(Xn, min(k + 1, Xn.shape[0]))  # +1 wegen Selbsttreffer
+        pairs = []
+        n = Xn.shape[0]
+        for i in range(n):
+            rank = 0
+            for j_idx, s in zip(I[i], D[i]):
+                if j_idx == i:
+                    continue  # Selbsttreffer
+                if s < thr:
+                    continue
+                # nur obere Dreieckshälfte (i<j) exportieren -> keine Duplikate
+                if i < j_idx:
+                    pairs.append({
+                        "URL_A": urls[i],
+                        "URL_B": urls[j_idx],
+                        "Cosinus_Ähnlichkeit": float(s),
+                        "Match-Typ": f"Similarity (FAISS) Rank {rank+1}"
+                    })
+                    if max_rows and len(pairs) >= max_rows:
+                        return pairs
+                rank += 1
+        # Nach Score absteigend sortieren
+        pairs.sort(key=lambda r: r["Cosinus_Ähnlichkeit"], reverse=True)
+        return pairs
+
     if export_csv:
         merged_cached = st.session_state.get("merged_cached")
         if merged_cached is not None:
-            with st.spinner("Berechne semantische Ähnlichkeiten (blockweise)…"):
-                url_list = merged_cached[url_col].astype(str).tolist()
-                X_raw = np.stack(merged_cached["embedding_vector"].tolist()).astype("float32", copy=False)
-                thr = float(sim_threshold)
+            url_list = merged_cached[url_col].astype(str).tolist()
+            X_raw = np.stack(merged_cached["embedding_vector"].tolist()).astype("float32", copy=False)
+            thr = float(sim_threshold)
 
-                # Warnung bei erwartbar großen Paarzahlen (grobe Heuristik)
-                n = len(url_list)
-                est_pairs = n * (n - 1) // 2
-                if unlimited_export and est_pairs > 2_000_000 and thr <= 0.2:
-                    st.warning(f"Viele Paare erwartet (~{est_pairs:,}). "
-                               f"Niedrige Schwelle + kein Limit kann sehr große CSVs erzeugen.")
-
-                pairs = similar_pairs_threshold_blocked(
-                    X_raw, url_list, thr=thr, max_rows=(None if unlimited_export else int(max_export_rows))
-                )
-
-                if not pairs:
-                    st.warning("Keine Paare über der eingestellten Ähnlichkeitsschwelle gefunden.")
-                else:
-                    sim_df = pd.DataFrame(pairs)
-                    sim_df = sim_df.sort_values("Cosinus_Ähnlichkeit", ascending=False, kind="stable")
-                    csv_bytes = sim_df.to_csv(index=False).encode("utf-8-sig")
-                    st.download_button(
-                        label=f"📥 Cosinus-Ähnlichkeiten als CSV (≥ {thr:.2f}, block-dot)",
-                        data=csv_bytes,
-                        file_name=f"cosinus_aehnlichkeiten_ge_{thr:.2f}_fast.csv",
-                        mime="text/csv",
+            if export_mode.startswith("Top-N") and FAISS_OK:
+                with st.spinner("Berechne semantische Ähnlichkeiten (FAISS Top-N)…"):
+                    pairs = faiss_topn_cosine(
+                        X_raw, url_list, k=int(top_n or 5),
+                        thr=thr,
+                        max_rows=(None if unlimited_export else int(max_export_rows))
                     )
+            else:
+                with st.spinner("Berechne semantische Ähnlichkeiten (blockweise)…"):
+                    # Warnung bei erwartbar großen Paarzahlen (grobe Heuristik)
+                    n = len(url_list)
+                    est_pairs = n * (n - 1) // 2
+                    if unlimited_export and est_pairs > 2_000_000 and thr <= 0.2:
+                        st.warning(f"Viele Paare erwartet (~{est_pairs:,}). "
+                                   f"Niedrige Schwelle + kein Limit kann sehr große CSVs erzeugen.")
+                    pairs = similar_pairs_threshold_blocked(
+                        X_raw, url_list, thr=thr, max_rows=(None if unlimited_export else int(max_export_rows))
+                    )
+
+            if not pairs:
+                st.warning("Keine Paare über der eingestellten Ähnlichkeitsschwelle gefunden.")
+            else:
+                sim_df = pd.DataFrame(pairs)
+                sim_df = sim_df.sort_values("Cosinus_Ähnlichkeit", ascending=False, kind="stable")
+                csv_bytes = sim_df.to_csv(index=False).encode("utf-8-sig")
+                label = (
+                    f"📥 Cosinus-Ähnlichkeiten als CSV (Top-{top_n}, ≥ {thr:.2f}, FAISS)"
+                    if export_mode.startswith("Top-N") and FAISS_OK
+                    else f"📥 Cosinus-Ähnlichkeiten als CSV (≥ {thr:.2f}, block-dot)"
+                )
+                st.download_button(
+                    label=label,
+                    data=csv_bytes,
+                    file_name="cosine_similarity_pairs.csv",
+                    mime="text/csv",
+                )
         else:
             st.info("Für den Export bitte zuerst **Let's Go / Refresh** ausführen.")
 
@@ -1059,7 +1104,6 @@ try:
             with st.spinner("Berechne Centroid-Ähnlichkeiten pro URL…"):
                 X = np.stack(merged_cached["embedding_vector"].tolist()).astype("float32", copy=False)
                 centroid_vec, centroid_mode_eff_export = compute_centroid(X, centroid_mode)
-                # Cosinus per DotProduct (normiert) für Speed & Stabilität
                 Xn = l2_normalize_rows(X)
                 cn = np.linalg.norm(centroid_vec)
                 if cn == 0:
