@@ -1,12 +1,13 @@
 streamlit==1.38.0
 pandas==2.2.2
 numpy==2.0.2
+scipy==1.14.1
 scikit-learn==1.5.2
-scipy==1.11.4
 plotly==5.23.0
 openpyxl==3.1.5
 xlrd==2.0.1
 umap-learn==0.5.5
-faiss-cpu==1.8.0.post5
 numba==0.59.1
+llvmlite==0.42.0
 pynndescent==0.5.12
+faiss-cpu==1.8.0.post5
