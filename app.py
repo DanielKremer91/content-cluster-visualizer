@@ -572,7 +572,7 @@ try:
         "Bubblegröße nach",
         size_options,
         index=0,
-        help=("Welche Werte aus welcher Spalte der Performance-/Metrik-Datei bestimmt die Größe der Bubbles?")
+        help=("Welche Werte aus welcher Spalte der Performance-/Metrik-Datei bestimmen die Größe der Bubbles?")
     )
 
     # Skalierung + Hilfetext (NEU)
@@ -591,13 +591,13 @@ try:
     size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10,
                                  help="Legt fest, wie groß die Bubbles im Diagramm maximal dargestellt werden.")
     clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1,
-                                 help="Werte unterhalb dieses Perzentils werden bei der Skalierung abgeschnitten (robust gegen Ausreißer unten). Wirkt sich nur auf die Darstellung der Bubblegrößen aus.")
+                                 help="Werte unterhalb dieses Perzentils werden bei der Skalierung abgeschnitten (robust gegen Ausreißer unten). Wirkt sich nur auf die Darstellung der Bubbles und deren Größe aus.")
     clip_high = st.sidebar.slider("Perzentil-Grenze oben (%)", 80, 100, 95,
-                                  help="Werte oberhalb dieses Perzentils werden abgeschnitten (robust gegen Ausreißer oben). Wirkt sich nur auf die Darstellung der Bubblegrößen aus.")
+                                  help="Werte oberhalb dieses Perzentils werden abgeschnitten (robust gegen Ausreißer oben). Wirkt sich nur auf die Darstellung der Bubbles und deren Größe aus.")
 
     # Centroid-Optionen (NEU: Hilfetext)
     show_centroid = st.sidebar.checkbox("Centroid markieren", value=False,
-                                        help="Zeigt den thematischen Mittelpunkt an, indem der Durchschnitt aller Embeddings berechnet und als Centroid eingefügt wird.")
+                                        help="Zeigt den thematischen Mittelpunkt an, indem der Durchschnitt aller Embeddings berechnet und als roter Stern in die Content-Map eingefügt wird.")
     with st.sidebar.expander("Erweitert: Centroid", expanded=False):
         centroid_mode = st.radio("Centroid-Modus", ["Auto (empfohlen)", "Standard", "Unit-Norm"], index=0,
                                  help=("Steuert, ob der Centroid im Normalraum (Standard) oder auf normierten Vektoren (Unit-Norm) berechnet wird.\n"
@@ -611,14 +611,14 @@ try:
 
     export_csv = st.sidebar.checkbox(
         "Semantisch ähnliche URLs exportieren", value=False,
-        help="CSV mit ähnlichen URL-Paaren (Cosinus-Ähnlichkeit)."
+        help="CSV-Export mit semantisch ähnlichen URL-Paaren (basiert Cosinus-Ähnlichkeit)."
     )
     # Exportmodus: Schwellenwert (exakt) oder FAISS Top-N (schnell)
     export_modes = ["Schwellenwert (exakt)"]
     if FAISS_OK:
         export_modes.append("Top-N (FAISS, schnell)")
     export_mode = st.sidebar.radio("Exportmodus", export_modes, index=0, disabled=not export_csv,
-                                   help=("*Schwellenwert*: alle Paare ≥ gewählter Ähnlichkeit.\n"
+                                   help=("*Schwellenwert*: alle URL-Paare ≥ gewählter Ähnlichkeit.\n"
                                          "*Top-N (FAISS)*: pro URL die N besten Nachbarn (schnell)."))
     sim_threshold = st.sidebar.slider(
         "Ähnlichkeitsschwelle (Cosinus)",
