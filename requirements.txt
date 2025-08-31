@@ -1,3 +1,4 @@
+# Core
 streamlit==1.38.0
 pandas==2.2.2
 numpy==2.0.2
@@ -7,11 +8,14 @@ plotly==5.23.0
 openpyxl==3.1.5
 xlrd==2.0.1
 
-# UMAP-Stack (NumPy-2 kompatibel)
-umap-learn>=0.5.8         # oder aktuellstes 0.5.9.post2
+# Streamlit-Abhängigkeit fixen
+rich==13.9.2           # < 14 wegen Streamlit 1.38
+
+# UMAP-Stack (NumPy-2-kompatibel)
+umap-learn>=0.5.8      # oder aktuelles 0.5.9.post2
 pynndescent>=0.5.12
 numba>=0.60.0
 llvmlite>=0.43.0
 
-# FAISS
+# FAISS (Py 3.11 kompatibel)
 faiss-cpu==1.12.0
