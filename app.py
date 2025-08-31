@@ -718,7 +718,7 @@ try:
             n_iter=750,
             random_state=42,
             perplexity=perplexity,
-        )x
+        )
         tsne_result = tsne.fit_transform(X_for_tsne)
         merged["tsne_x"] = tsne_result[: X.shape[0], 0]
         merged["tsne_y"] = tsne_result[: X.shape[0], 1]
