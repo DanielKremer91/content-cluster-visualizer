@@ -928,13 +928,20 @@ try:
                 hoverlabel=dict(bgcolor="red", font_color="white", bordercolor="black")
             ))
 
-        # (NEU) Keine Gitternetzlinien
-        fig.update_xaxes(showgrid=False, zeroline=False)
-        fig.update_yaxes(showgrid=False, zeroline=False)
-
-        # Keine Gitternetzlinien + Achsen-Beschriftungen
-        fig.update_xaxes(showgrid=False, zeroline=False, title_text="t-SNE X")
-        fig.update_yaxes(showgrid=False, zeroline=False, title_text="t-SNE Y")
+        fig.update_xaxes(
+            showgrid=False, zeroline=False,
+            showline=True, linecolor="black", linewidth=2,
+            title_text="t-SNE X",
+            tickfont=dict(color="black"),
+            title_font=dict(color="black"),
+        )
+        fig.update_yaxes(
+            showgrid=False, zeroline=False,
+            showline=True, linecolor="black", linewidth=2,
+            title_text="t-SNE Y",
+            tickfont=dict(color="black"),
+            title_font=dict(color="black"),
+        )
 
         # Layout + gut lesbare Legende (schwarze Schrift)
         fig.update_layout(
