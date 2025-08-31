@@ -825,7 +825,16 @@ try:
         # Für dynamischen Legendentitel, insbesondere bei Segments
         method = cluster_method
         segment_col = segment_col_global
-        legend_title = segment_col if (method == "Segments" and segment_col) else "Cluster"
+        # Aussagekräftiger Legenden-Titel je Methode
+        if method == "Segments" and segment_col:
+            legend_title_text = segment_col  # z.B. "Segmente" oder Spaltenname
+        elif method == "K-Means":
+            legend_title_text = "Cluster (K-Means)"
+        elif method == "DBSCAN (Cosinus)":
+            legend_title_text = "Cluster (DBSCAN)"
+        else:
+            legend_title_text = "Cluster"
+
 
         if q:
             # --- Suchmodus: Basisschicht grau, nur Treffer farbig ---
@@ -926,18 +935,30 @@ try:
         fig.update_xaxes(showgrid=False, zeroline=False)
         fig.update_yaxes(showgrid=False, zeroline=False)
 
+        # Keine Gitternetzlinien + Achsen-Beschriftungen
+        fig.update_xaxes(showgrid=False, zeroline=False, title_text="t-SNE X")
+        fig.update_yaxes(showgrid=False, zeroline=False, title_text="t-SNE Y")
+
+        # Layout + gut lesbare Legende (schwarze Schrift)
         fig.update_layout(
             title=title,
             plot_bgcolor=bg,
             paper_bgcolor=bg,
             height=750,
             margin=dict(l=10, r=10, t=50, b=10),
-            legend_title=legend_title,
             showlegend=True,
             dragmode="zoom",
             hovermode="closest",
-            legend=dict(itemsizing="constant")
+            legend=dict(
+                title=dict(text=legend_title_text, font=dict(color="black")),
+                font=dict(color="black"),                 # <-- Legenden-Schrift schwarz
+                bgcolor="rgba(255,255,255,0.9)",          # <-- milchiger weißer Hintergrund (bessere Lesbarkeit)
+                bordercolor="rgba(0,0,0,0.15)",
+                borderwidth=1,
+                itemsizing="constant",
+            ),
         )
+
 
         st.subheader("📈 Visualisierung")
         if st.session_state.get("centroid_mode_eff"):
