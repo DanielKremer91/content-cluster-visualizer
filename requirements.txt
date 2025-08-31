@@ -7,11 +7,11 @@ plotly==5.23.0
 openpyxl==3.1.5
 xlrd==2.0.1
 
-# UMAP-Stack (NumPy-2-kompatibel)
-umap-learn==0.5.5
-numba==0.60.0
-llvmlite==0.43.0
-pynndescent==0.5.12
+# UMAP-Stack (NumPy-2 kompatibel)
+umap-learn>=0.5.8         # oder aktuellstes 0.5.9.post2
+pynndescent>=0.5.12
+numba>=0.60.0
+llvmlite>=0.43.0
 
-# FAISS (für Py 3.11 verfügbar)
+# FAISS
 faiss-cpu==1.12.0
