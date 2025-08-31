@@ -674,16 +674,16 @@ try:
         return Xp.astype(np.float32, copy=False)
 
     def choose_perplexity(n: int) -> int:
-    # 10–50 üblich; nie >= n
-    if n < 200:
-        base = 20
-    elif n < 2000:
-        base = 30
-    elif n < 8000:
-        base = 40
-    else:
-        base = 50
-    return max(10, min(base, n - 1))
+        # 10–50 üblich; nie >= n
+        if n < 200:
+            base = 20
+        elif n < 2000:
+            base = 30
+        elif n < 8000:
+            base = 40
+        else:
+            base = 50
+        return max(10, min(base, n - 1))
 
     def build_data_and_cache():
         """Schwere Schritte ausführen und Ergebnis in Session-State ablegen."""
