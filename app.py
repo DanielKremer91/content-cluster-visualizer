@@ -28,16 +28,7 @@ except Exception as e:
     SKLEARN_OK = False
     _import_err = e
 
-# --- UMAP / FAISS (optional) ---
-UMAP_OK = True
-_umap_err = None
-try:
-    # wird nur genutzt, wenn in der Sidebar "UMAP" gewählt ist
-    from umap import UMAP
-except Exception as e:
-    UMAP_OK = False
-    _umap_err = e
-
+# --- FAISS (optional) ---
 FAISS_OK = True
 _faiss_err = None
 try:
@@ -78,8 +69,6 @@ VER_NP = _np.__version__
 VER_PD = pd.__version__
 st.sidebar.info(f"🔧 Python {VER_PY} · NumPy {VER_NP} · pandas {VER_PD} · scikit-learn {VER_SKL}")
 
-if not UMAP_OK:
-    st.sidebar.caption(f"ℹ️ UMAP nicht verfügbar: {_umap_err}")
 if not FAISS_OK:
     st.sidebar.caption(f"ℹ️ FAISS nicht verfügbar: {_faiss_err}")
 
@@ -126,8 +115,8 @@ Dieses Tool macht **thematische Strukturen einer Domain sichtbar** und erlaubt d
   ↳ Alle **numerischen Spalten** daraus können zur Skalierung der **Bubble-Größe** verwendet werden. Das Tool erkennt die Spalten automatisch und bietet sie im Dropdown-Menü zur Auswahl an.
 
 ### ⚙️ Wie funktioniert’s?
-- **2D-Projektion:** *t-SNE* **oder** *UMAP* (umschaltbar) – UMAP ist oft schneller & global stabiler; t-SNE zeigt feinere Nachbarschaften.
-- **Clustering:** *K-Means* (feste k), *DBSCAN* (dichtebasiert, Cosinus-Distanz) oder vorhandene *Segments*-Spalte.
+- **2D-Projektion:** *t-SNE* (fix) – feine Nachbarschaften, gut für Clustervisualisierung.
+- **Clustering:** *K-Means* (feste k), *DBSCAN* (dichtebasiert, Cosinus) oder vorhandene *Segments*-Spalte.
 - **Abstände:** *Euklidisch* oder *Cosinus (schnell)* (L2-normalisiert + euklidisch).
 - **Bubble-Größe:** nach beliebiger **numerischer KPI** aus der Performance-Datei darstellbar.
 - **Suche:** interaktive **URL-Suche** – Treffer farbig, Rest ausgegraut.
@@ -536,16 +525,8 @@ try:
     # =============================
     st.sidebar.header("Einstellungen")
 
-    # Projektion: t-SNE oder UMAP
-    proj_opts = ["t-SNE", "UMAP"] if UMAP_OK else ["t-SNE"]
-    proj_method = st.sidebar.radio(
-        "2D-Projektion",
-        proj_opts,
-        index=0,
-        help="UMAP ist schneller & global stabiler; t-SNE zeigt feinere Nachbarschaften."
-    )
-    if (proj_method == "UMAP") and (not UMAP_OK):
-        st.sidebar.caption("⚠️ UMAP nicht installiert – es wird automatisch t-SNE verwendet.")
+    # (Fix) Projektion: immer t-SNE
+    proj_method = "t-SNE"
 
     # Dynamische Optionsliste: 'Segments' nur, wenn Spalte existiert
     cluster_options = ["K-Means", "DBSCAN (Cosinus)"]
@@ -592,28 +573,39 @@ try:
         help=("Welche Spalte aus der Performance-/Metrik-Datei bestimmt die Blasengröße?")
     )
 
-    # Skalierung + Hilfetext
+    # Skalierung + Hilfetext (NEU)
     size_method = st.sidebar.radio(
         "Skalierung",
         ["Logarithmisch (log1p)", "Linear (Min–Max)"],
-        index=0
+        index=0,
+        help=("Bestimmt, wie aus der gewählten KPI die Punktdurchmesser berechnet werden.\n\n"
+              "• *Logarithmisch (log1p)*: komprimiert Ausreißer – sinnvoll bei stark schiefen Verteilungen.\n"
+              "• *Linear (Min–Max)*: skaliert proportional zwischen Minimum und Maximum.")
     )
 
-    # Min-/Max-Größe + Perzentil-Grenzen
-    size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2)
-    size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10)
-    clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1)
-    clip_high = st.sidebar.slider("Perzentil-Grenze oben (%)", 80, 100, 95)
+    # Min-/Max-Größe + Perzentil-Grenzen (NEU: Hilfetexte)
+    size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2,
+                                 help="Kleinster Punkt-Durchmesser in Pixeln nach Skalierung.")
+    size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10,
+                                 help="Größter Punkt-Durchmesser in Pixeln nach Skalierung.")
+    clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1,
+                                 help="Werte unterhalb dieses Perzentils werden bei der Skalierung abgeschnitten (robust gegen Ausreißer unten).")
+    clip_high = st.sidebar.slider("Perzentil-Grenze oben (%)", 80, 100, 95,
+                                  help="Werte oberhalb dieses Perzentils werden abgeschnitten (robust gegen Ausreißer oben).")
 
-    # Centroid-Optionen
-    show_centroid = st.sidebar.checkbox("Centroid markieren", value=False)
+    # Centroid-Optionen (NEU: Hilfetext)
+    show_centroid = st.sidebar.checkbox("Centroid markieren", value=False,
+                                        help="Zeigt den thematischen Schwerpunkt aller Embeddings als roten Stern an.")
     with st.sidebar.expander("Erweitert: Centroid", expanded=False):
-        centroid_mode = st.radio("Centroid-Modus", ["Auto (empfohlen)", "Standard", "Unit-Norm"], index=0)
+        centroid_mode = st.radio("Centroid-Modus", ["Auto (empfohlen)", "Standard", "Unit-Norm"], index=0,
+                                 help=("Steuert, ob der Centroid im Normalraum (Standard) oder auf normierten Vektoren (Unit-Norm) berechnet wird.\n"
+                                       "‘Auto’ wählt basierend auf Norm-Statistiken sinnvoll.") )
     centroid_size = st.sidebar.slider("Centroid-Sterngröße (px)", 10, 40, 22, 1, disabled=not show_centroid)
 
     # Bubble-Scale und Hintergrundfarbe (vor Export-Überschrift)
     if perf_df is not None and (size_by != "Keine Skalierung"):
-        bubble_scale = st.sidebar.slider("Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05)
+        bubble_scale = st.sidebar.slider("Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05,
+                                         help="Multipliziert alle Durchmesser – feinjustiert die visuelle Punktgröße.")
     else:
         bubble_scale = 1.0
 
@@ -630,7 +622,9 @@ try:
     export_modes = ["Schwellenwert (exakt)"]
     if FAISS_OK:
         export_modes.append("Top-N (FAISS, schnell)")
-    export_mode = st.sidebar.radio("Exportmodus", export_modes, index=0, disabled=not export_csv)
+    export_mode = st.sidebar.radio("Exportmodus", export_modes, index=0, disabled=not export_csv,
+                                   help=("*Schwellenwert*: alle Paare ≥ gewählter Ähnlichkeit.\n"
+                                         "*Top-N (FAISS)*: pro URL die N besten Nachbarn (schnell)."))
     sim_threshold = st.sidebar.slider(
         "Ähnlichkeitsschwelle (Cosinus)",
         min_value=0.00, max_value=1.00, value=0.00, step=0.01,
@@ -639,7 +633,8 @@ try:
     )
     top_n = None
     if export_csv and (export_mode.startswith("Top-N")):
-        top_n = st.sidebar.slider("Top-N pro URL (FAISS)", 1, 50, 5, 1)
+        top_n = st.sidebar.slider("Top-N pro URL (FAISS)", 1, 50, 5, 1,
+                                  help="Wie viele beste Nachbarn pro URL werden berücksichtigt?")
 
     export_lowrel_csv = st.sidebar.checkbox(
         "Low-Relevance-URLs exportieren", value=False,
@@ -648,13 +643,18 @@ try:
     lowrel_threshold = st.sidebar.slider(
         "Schwelle (Centroid-Cosinus)",
         min_value=0.00, max_value=1.00, value=0.40, step=0.01,
-        disabled=not export_lowrel_csv
+        disabled=not export_lowrel_csv,
+        help="URLs mit Ähnlichkeit < Schwelle werden als potenziell themenfern exportiert."
     )
 
-    unlimited_export = st.sidebar.checkbox("Kein Limit für Export", value=False)
+    # (NEU) Hilfetext für „Kein Limit beim Export“
+    unlimited_export = st.sidebar.checkbox("Kein Limit für Export", value=False,
+                                           help=("Bei sehr vielen URLs können extrem große CSVs entstehen.\n"
+                                                 "Wenn deaktiviert, wird der Export auf eine maximale Zeilenzahl begrenzt."))
     if not unlimited_export:
         max_export_rows = st.sidebar.number_input(
-            "Max. Zeilen pro Export", min_value=50_000, max_value=5_000_000, step=50_000, value=250_000
+            "Max. Zeilen pro Export", min_value=50_000, max_value=5_000_000, step=50_000, value=250_000,
+            help="Begrenzt die Größe der Export-Dateien, um Speicher/Browser zu schonen."
         )
     else:
         max_export_rows = None
@@ -705,49 +705,29 @@ try:
             centroid_mode_eff = None
             X_proj = X
 
-        # --------- 2D-Projektion: t-SNE oder UMAP ----------
-        if proj_method == "UMAP" and UMAP_OK:
-            # Bei Cosinus-Äquivalent: vorher L2-normalisieren und UMAP mit metric="cosine"
-            X_for_umap = X_proj
-            metric = "cosine" if use_cosine_equivalent else "euclidean"
-            # n_neighbors sinnvoll setzen
-            n_neighbors = int(np.clip(max(5, X_for_umap.shape[0] // 100), 10, 50))
-            reducer = UMAP(
-                n_components=2,
-                n_neighbors=n_neighbors,
-                min_dist=0.1,
-                metric=metric,
-                random_state=42
-            )
-            coords = reducer.fit_transform(X_for_umap if not use_cosine_equivalent else l2_normalize_rows(X_for_umap))
-            merged["tsne_x"] = coords[: len(X), 0]
-            merged["tsne_y"] = coords[: len(X), 1]
-            n_points_2d = int(coords.shape[0])
-        else:
-            # t-SNE mit PCA-Vorreduktion; bei Cosinus-Äquivalent: vorher L2-normalisieren
-            X_for_tsne = pre_reduce_for_proj(X_proj, d=50, normalize=use_cosine_equivalent)
+        # --------- 2D-Projektion: t-SNE (fix) ----------
+        X_for_tsne = pre_reduce_for_proj(X_proj, d=50, normalize=use_cosine_equivalent)
+        n_samples_tsne = X_for_tsne.shape[0]
+        if n_samples_tsne <= 5:
+            st.error("Zu wenige Punkte für die 2D-Projektion.")
+            st.stop()
+        perplexity = max(5, min(30, n_samples_tsne - 1))
 
-            n_samples_tsne = X_for_tsne.shape[0]
-            if n_samples_tsne <= 5:
-                st.error("Zu wenige Punkte für die 2D-Projektion.")
-                st.stop()
-            perplexity = max(5, min(30, n_samples_tsne - 1))
-
-            tsne = TSNE(
-                n_components=2,
-                metric="euclidean",
-                method="barnes_hut",
-                init="pca",
-                learning_rate="auto",
-                n_iter=600,
-                random_state=42,
-                perplexity=perplexity
-            )
-            tsne_result = tsne.fit_transform(X_for_tsne)
-            merged["tsne_x"] = tsne_result[: len(X), 0]
-            merged["tsne_y"] = tsne_result[: len(X), 1]
-            n_points_2d = int(tsne_result.shape[0])
-            st.caption(f"t-SNE Perplexity: {perplexity} · Punkte im 2D: {n_points_2d}")
+        tsne = TSNE(
+            n_components=2,
+            metric="euclidean",
+            method="barnes_hut",
+            init="pca",
+            learning_rate="auto",
+            n_iter=600,
+            random_state=42,
+            perplexity=perplexity
+        )
+        tsne_result = tsne.fit_transform(X_for_tsne)
+        merged["tsne_x"] = tsne_result[: X.shape[0], 0]
+        merged["tsne_y"] = tsne_result[: X.shape[0], 1]
+        n_points_2d = int(tsne_result.shape[0])
+        st.caption(f"t-SNE Perplexity: {perplexity} · Punkte im 2D: {n_points_2d}")
 
         # Cluster
         method = cluster_method
@@ -811,27 +791,15 @@ try:
         st.session_state["scaled_cached"] = scaled
         st.session_state["hover_cols_cached"] = _build_hover_cols(merged, metric_col)
         st.session_state["plot_title_cached"] = (
-            ("🔍 UMAP der Seiten-Embeddings" if (proj_method == "UMAP" and UMAP_OK) else "🔍 t-SNE der Seiten-Embeddings")
-            + (" (mit Skalierung)" if scaled else "")
+            "🔍 t-SNE der Seiten-Embeddings" + (" (mit Skalierung)" if scaled else "")
         )
         st.session_state["bg_color_cached"] = bg_color
         st.session_state["highlight_px_cached"] = max(int(size_min * float(bubble_scale)) + 6, 8)
         st.session_state["url_col_cached"] = url_col
         st.session_state["centroid_in_proj"] = use_centroid_flag
-        if use_centroid_flag:
-            # Centroid-Koordinaten: letzter Punkt in der 2D-Projektion
-            st.session_state["centroid_xy"] = (
-                float(merged["tsne_x"].append(pd.Series([np.nan])).iloc[-1]) if False else None
-            )
-        # Da wir den Centroid nicht in 'merged' eingefügt haben, merken wir ihn separat:
         st.session_state["centroid_mode_eff"] = centroid_mode_eff
         if use_centroid_flag:
-            # Wir projizieren den Centroid mit (indem er in X_proj enthalten war),
-            # nehmen also die letzte 2D-Koordinate aus coords/tsne_result:
-            if proj_method == "UMAP" and UMAP_OK:
-                cx, cy = float(coords[-1, 0]), float(coords[-1, 1])
-            else:
-                cx, cy = float(tsne_result[-1, 0]), float(tsne_result[-1, 1])
+            cx, cy = float(tsne_result[-1, 0]), float(tsne_result[-1, 1])
             st.session_state["centroid_xy"] = (cx, cy)
         else:
             st.session_state["centroid_xy"] = None
@@ -853,6 +821,11 @@ try:
         centroid_mode_eff = st.session_state.get("centroid_mode_eff", None)
 
         q = (q or "").strip().lower()
+
+        # Für dynamischen Legendentitel, insbesondere bei Segments
+        method = cluster_method
+        segment_col = segment_col_global
+        legend_title = segment_col if (method == "Segments" and segment_col) else "Cluster"
 
         if q:
             # --- Suchmodus: Basisschicht grau, nur Treffer farbig ---
@@ -877,7 +850,7 @@ try:
                 for _, row in hi.iterrows():
                     extras = []
                     if "Cluster" in row:
-                        extras.append(f"Cluster: {row['Cluster']}")
+                        extras.append(f"{legend_title}: {row['Cluster']}")
                     hover_texts.append(f"{row[url_c]}<br>" + ("<br>".join(extras) if extras else ""))
                 fig.add_trace(go.Scattergl(
                     x=hi["tsne_x"], y=hi["tsne_y"], mode="markers", name="Treffer",
@@ -949,13 +922,17 @@ try:
                 hoverlabel=dict(bgcolor="red", font_color="white", bordercolor="black")
             ))
 
+        # (NEU) Keine Gitternetzlinien
+        fig.update_xaxes(showgrid=False, zeroline=False)
+        fig.update_yaxes(showgrid=False, zeroline=False)
+
         fig.update_layout(
             title=title,
             plot_bgcolor=bg,
             paper_bgcolor=bg,
             height=750,
             margin=dict(l=10, r=10, t=50, b=10),
-            legend_title="Cluster",
+            legend_title=legend_title,
             showlegend=True,
             dragmode="zoom",
             hovermode="closest",
