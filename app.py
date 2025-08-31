@@ -554,9 +554,11 @@ try:
     # Darstellungsmethode (Abstand) – Cosinus (schnell) = Unit-Norm + Euclid
     metric_label = st.sidebar.selectbox(
         "Darstellungsmethode (Abstand)",
-        ["Euklidisch", "Cosinus (schnell)"],
-        help=("Bestimmt, wie der Abstand bzw. die Ähnlichkeit für die Projektion behandelt wird.\n\n"
-              "Cosinus (schnell): Vektoren werden L2-normalisiert und mit euklidischer Metrik geplottet (äquivalent & schnell).")
+        ["Cosinus (schnell)", "Euklidisch"],
+        index=0,
+        help=("Legt fest, wie die Ähnlichkeit zwischen Seiten gemessen wird.\n\n"
+              "• Cosinus (schnell): meist die beste Wahl für Texte.\n"
+              "• Euklidisch: klassisches Maß für Abstände.")
     )
     tsne_metric = "euclidean"  # für t-SNE immer euclid (Speed)
     use_cosine_equivalent = metric_label.startswith("Cosinus")
@@ -570,7 +572,7 @@ try:
         "Bubblegröße nach",
         size_options,
         index=0,
-        help=("Welche Spalte aus der Performance-/Metrik-Datei bestimmt die Blasengröße?")
+        help=("Welche Werte aus welcher Spalte der Performance-/Metrik-Datei bestimmt die Größe der Bubbles?")
     )
 
     # Skalierung + Hilfetext (NEU)
@@ -585,29 +587,22 @@ try:
 
     # Min-/Max-Größe + Perzentil-Grenzen (NEU: Hilfetexte)
     size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2,
-                                 help="Kleinster Punkt-Durchmesser in Pixeln nach Skalierung.")
+                                 help="Legt fest, wie klein die Bubbles im Diagramm mindestens dargestellt werden.")
     size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10,
-                                 help="Größter Punkt-Durchmesser in Pixeln nach Skalierung.")
+                                 help="Legt fest, wie groß die Bubbles im Diagramm maximal dargestellt werden.")
     clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1,
-                                 help="Werte unterhalb dieses Perzentils werden bei der Skalierung abgeschnitten (robust gegen Ausreißer unten).")
+                                 help="Werte unterhalb dieses Perzentils werden bei der Skalierung abgeschnitten (robust gegen Ausreißer unten). Wirkt sich nur auf die Darstellung der Bubblegrößen aus.")
     clip_high = st.sidebar.slider("Perzentil-Grenze oben (%)", 80, 100, 95,
-                                  help="Werte oberhalb dieses Perzentils werden abgeschnitten (robust gegen Ausreißer oben).")
+                                  help="Werte oberhalb dieses Perzentils werden abgeschnitten (robust gegen Ausreißer oben). Wirkt sich nur auf die Darstellung der Bubblegrößen aus.")
 
     # Centroid-Optionen (NEU: Hilfetext)
     show_centroid = st.sidebar.checkbox("Centroid markieren", value=False,
-                                        help="Zeigt den thematischen Schwerpunkt aller Embeddings als roten Stern an.")
+                                        help="Zeigt den thematischen Mittelpunkt an, indem der Durchschnitt aller Embeddings berechnet und als Centroid eingefügt wird.")
     with st.sidebar.expander("Erweitert: Centroid", expanded=False):
         centroid_mode = st.radio("Centroid-Modus", ["Auto (empfohlen)", "Standard", "Unit-Norm"], index=0,
                                  help=("Steuert, ob der Centroid im Normalraum (Standard) oder auf normierten Vektoren (Unit-Norm) berechnet wird.\n"
                                        "‘Auto’ wählt basierend auf Norm-Statistiken sinnvoll.") )
     centroid_size = st.sidebar.slider("Centroid-Sterngröße (px)", 10, 40, 22, 1, disabled=not show_centroid)
-
-    # Bubble-Scale und Hintergrundfarbe (vor Export-Überschrift)
-    if perf_df is not None and (size_by != "Keine Skalierung"):
-        bubble_scale = st.sidebar.slider("Bubble-Scale (global)", 0.20, 2.00, 1.00, 0.05,
-                                         help="Multipliziert alle Durchmesser – feinjustiert die visuelle Punktgröße.")
-    else:
-        bubble_scale = 1.0
 
     bg_color = st.sidebar.color_picker("Hintergrundfarbe für Bubble-Chart", value="#FFFFFF")
 
@@ -628,7 +623,7 @@ try:
     sim_threshold = st.sidebar.slider(
         "Ähnlichkeitsschwelle (Cosinus)",
         min_value=0.00, max_value=1.00, value=0.00, step=0.01,
-        help=("Nur Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert."),
+        help=("Es weren URL-Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert exportiert."),
         disabled=not export_csv
     )
     top_n = None
@@ -713,15 +708,17 @@ try:
             st.stop()
         perplexity = max(5, min(30, n_samples_tsne - 1))
 
+        tsne_method = "exact" if n_samples_tsne <= 3000 else "barnes_hut"
         tsne = TSNE(
             n_components=2,
             metric="euclidean",
-            method="barnes_hut",
+            method=tsne_method,
             init="pca",
             learning_rate="auto",
-            n_iter=600,
+            n_iter=750,
             random_state=42,
-            perplexity=perplexity
+            perplexity=perplexity,
+            square_distances=True,
         )
         tsne_result = tsne.fit_transform(X_for_tsne)
         merged["tsne_x"] = tsne_result[: X.shape[0], 0]
@@ -782,9 +779,10 @@ try:
             merged["__marker_size"] = float(size_min)
 
         if scaled:
-            merged["__marker_px"] = (merged["__marker_size"] * float(bubble_scale)).clip(lower=1)
+            merged["__marker_px"] = merged["__marker_size"].clip(lower=1)
         else:
-            merged["__marker_px"] = max(1, int(size_min * float(bubble_scale)))
+            merged["__marker_px"] = max(1, int(size_min))
+
 
         # Cache
         st.session_state["merged_cached"] = merged
@@ -794,7 +792,7 @@ try:
             "🔍 t-SNE der Seiten-Embeddings" + (" (mit Skalierung)" if scaled else "")
         )
         st.session_state["bg_color_cached"] = bg_color
-        st.session_state["highlight_px_cached"] = max(int(size_min * float(bubble_scale)) + 6, 8)
+        st.session_state["highlight_px_cached"] = max(int(size_min) + 6, 8)
         st.session_state["url_col_cached"] = url_col
         st.session_state["centroid_in_proj"] = use_centroid_flag
         st.session_state["centroid_mode_eff"] = centroid_mode_eff
@@ -859,7 +857,7 @@ try:
                 for _, row in hi.iterrows():
                     extras = []
                     if "Cluster" in row:
-                        extras.append(f"{legend_title}: {row['Cluster']}")
+                        extras.append(f"{legend_title_text}: {row['Cluster']}")
                     hover_texts.append(f"{row[url_c]}<br>" + ("<br>".join(extras) if extras else ""))
                 fig.add_trace(go.Scattergl(
                     x=hi["tsne_x"], y=hi["tsne_y"], mode="markers", name="Treffer",
