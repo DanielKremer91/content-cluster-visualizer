@@ -537,7 +537,7 @@ try:
         "Clustermethode",
         cluster_options,
         help=("K-Means: feste Clusterzahl • "
-              + (f"Segments: nutzt erkannte Spalte „{segment_col_global}“ • " if segment_col_global else "")
+              + (f"Segments: nutzt erkannte Spalte „{segment_col_global}“ in Input-Datei • " if segment_col_global else "")
               + "DBSCAN: dichtebasiert (Cosinus)")
     )
     if not segment_col_global:
@@ -569,7 +569,7 @@ try:
         size_options += perf_metric_candidates
 
     size_by = st.sidebar.selectbox(
-        "Bubblegröße nach",
+        "Bubblegröße skalieren nach",
         size_options,
         index=0,
         help=("Welche Werte aus welcher Spalte der Performance-/Metrik-Datei bestimmen die Größe der Bubbles?")
@@ -577,7 +577,7 @@ try:
 
     # Skalierung + Hilfetext (NEU)
     size_method = st.sidebar.radio(
-        "Skalierung",
+        "Skalierungsmethode",
         ["Logarithmisch (log1p)", "Linear (Min–Max)"],
         index=0,
         help=("Bestimmt, wie aus der gewählten KPI die Punktdurchmesser berechnet werden.\n\n"
@@ -586,9 +586,9 @@ try:
     )
 
     # Min-/Max-Größe + Perzentil-Grenzen (NEU: Hilfetexte)
-    size_min = st.sidebar.slider("Min-Größe (px)", 1, 12, 2,
+    size_min = st.sidebar.slider("Min-Größe Bubbles (px)", 1, 12, 2,
                                  help="Legt fest, wie klein die Bubbles im Diagramm mindestens dargestellt werden.")
-    size_max = st.sidebar.slider("Max-Größe (px)", 6, 40, 10,
+    size_max = st.sidebar.slider("Max-Größe Bubbles (px)", 6, 40, 10,
                                  help="Legt fest, wie groß die Bubbles im Diagramm maximal dargestellt werden.")
     clip_low = st.sidebar.slider("Perzentil-Grenze unten (%)", 0, 20, 1,
                                  help="Werte unterhalb dieses Perzentils werden bei der Skalierung abgeschnitten (robust gegen Ausreißer unten). Wirkt sich nur auf die Darstellung der Bubbles und deren Größe aus.")
@@ -611,7 +611,7 @@ try:
 
     export_csv = st.sidebar.checkbox(
         "Semantisch ähnliche URLs exportieren", value=False,
-        help="CSV-Export mit semantisch ähnlichen URL-Paaren (basiert Cosinus-Ähnlichkeit)."
+        help="CSV-Export mit semantisch ähnlichen URL-Paaren (basiert auf Cosinus-Ähnlichkeit)"
     )
     # Exportmodus: Schwellenwert (exakt) oder FAISS Top-N (schnell)
     export_modes = ["Schwellenwert (exakt)"]
@@ -623,23 +623,23 @@ try:
     sim_threshold = st.sidebar.slider(
         "Ähnlichkeitsschwelle (Cosinus)",
         min_value=0.00, max_value=1.00, value=0.00, step=0.01,
-        help=("Es weren URL-Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert exportiert."),
+        help=("Es weren URL-Paare mit Cosinus-Ähnlichkeit ≥ Schwellenwert exportiert. 0 = überhaupt keine Ähnlichkeit; 1 = identisch"),
         disabled=not export_csv
     )
     top_n = None
     if export_csv and (export_mode.startswith("Top-N")):
         top_n = st.sidebar.slider("Top-N pro URL (FAISS)", 1, 50, 5, 1,
-                                  help="Wie viele beste Nachbarn pro URL werden berücksichtigt?")
+                                  help="Wie viele beste Nachbarn pro URL sollen maximal berücksichtigt werden?")
 
     export_lowrel_csv = st.sidebar.checkbox(
         "Low-Relevance-URLs exportieren", value=False,
         help=("Seiten mit Cosinus-Ähnlichkeit zum Centroid unterhalb der Schwelle.")
     )
     lowrel_threshold = st.sidebar.slider(
-        "Schwelle (Centroid-Cosinus)",
+        "Unähnlichkeitsschwelle (Cosinus Similarity zwischen URL & Centroid)",
         min_value=0.00, max_value=1.00, value=0.40, step=0.01,
         disabled=not export_lowrel_csv,
-        help="URLs mit Ähnlichkeit < Schwelle werden als potenziell themenfern exportiert."
+        help="URLs mit Ähnlichkeit < Schwelle (zum Centroid) werden als potenziell themenfern exportiert. 0 = überhaupt keine Ähnlichkeit; 1 = identisch"
     )
 
     # (NEU) Hilfetext für „Kein Limit beim Export“
