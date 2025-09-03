@@ -894,14 +894,25 @@ try:
                 except Exception:
                     return (1, str(lbl).lower())
 
-            cluster_order = [lbl for lbl in sorted(cluster_labels, key=_legend_sort_key)]
+           cluster_order = [lbl for lbl in sorted(cluster_labels, key=_legend_sort_key)]
 
+            # === Ergänzen: Farbpalette & Mapping ===
+            def distinct_palette(n, sat=65, light=50):
+                import numpy as _np
+                hues = _np.linspace(0, 360, n, endpoint=False)
+                return [f"hsl({int(round(h))}, {sat}%, {light}%)" for h in hues]
+            
+            palette = distinct_palette(len(cluster_order))
+            color_map = {label: palette[i] for i, label in enumerate(cluster_order)}
+            # =======================================
+            
             fig = px.scatter(
                 merged,
                 x="tsne_x",
                 y="tsne_y",
                 color="Cluster",
                 category_orders={"Cluster": cluster_order},
+                color_discrete_map=color_map,   # ← NEU: feste, eindeutige Farben
                 hover_data=hover_cols,
                 template="plotly_white",
                 title=title,
