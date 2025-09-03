@@ -883,65 +883,66 @@ try:
                     showlegend=False
                 ))
                 st.caption(f"✨ {int(mask.sum())} Treffer für „{q}“")
-        else:
-            # --- Normalmodus: farbige Cluster ---
-            merged["Cluster"] = merged["Cluster"].astype(str)
-            cluster_labels = merged["Cluster"].unique().tolist()
+                else:
+                    # --- Normalmodus: farbige Cluster ---
+                    merged["Cluster"] = merged["Cluster"].astype(str)
+                    cluster_labels = merged["Cluster"].unique().tolist()
+    
+                    def _legend_sort_key(lbl):
+                        try:
+                            return (0, float(lbl))
+                        except Exception:
+                            return (1, str(lbl).lower())
+        
+                    cluster_order = [lbl for lbl in sorted(cluster_labels, key=_legend_sort_key)]
+        
+                    # === Eindeutige Farben pro Cluster (keine Wiederholung) ===
+                    def distinct_palette(n, sat=65, light=50):
+                        import numpy as _np
+                        hues = _np.linspace(0, 360, n, endpoint=False)
+                        return [f"hsl({int(round(h))}, {sat}%, {light}%)" for h in hues]
+        
+                    palette = distinct_palette(len(cluster_order))
+                    color_map = {label: palette[i] for i, label in enumerate(cluster_order)}
+                    # ==========================================================
+        
+                    fig = px.scatter(
+                        merged,
+                        x="tsne_x",
+                        y="tsne_y",
+                        color="Cluster",
+                        category_orders={"Cluster": cluster_order},
+                        color_discrete_map=color_map,   # feste, eindeutige Farben
+                        hover_data=hover_cols,
+                        template="plotly_white",
+                        title=title,
+                        render_mode="webgl",
+                    )
+        
+                    color_by_name = {}
+                    for tr in fig.data:
+                        mask = (merged["Cluster"] == tr.name)
+                        sizes = merged.loc[mask, "__marker_px"].tolist()
+                        tr.marker.update(size=sizes, sizemode="diameter", opacity=0.55, line=dict(width=0.5, color="white"))
+                        cval = tr.marker.color
+                        if isinstance(cval, (list, np.ndarray)) and len(cval) > 0:
+                            cval = cval[0]
+                        color_by_name[tr.name] = cval
+                        tr.hoverlabel = dict(bgcolor=cval, font_color="white", bordercolor="black")
+                        tr.legendgroup = tr.name
+                        tr.showlegend = False
+        
+                    for name in cluster_order:
+                        fig.add_trace(go.Scattergl(
+                            x=[None], y=[None],
+                            mode="markers",
+                            name=name,
+                            legendgroup=name,
+                            showlegend=True,
+                            marker=dict(size=12, color=color_by_name.get(name, None), line=dict(width=0.5, color="white")),
+                            hoverinfo="skip"
+                        ))
 
-            def _legend_sort_key(lbl):
-                try:
-                    return (0, float(lbl))
-                except Exception:
-                    return (1, str(lbl).lower())
-
-           cluster_order = [lbl for lbl in sorted(cluster_labels, key=_legend_sort_key)]
-
-            # === Ergänzen: Farbpalette & Mapping ===
-            def distinct_palette(n, sat=65, light=50):
-                import numpy as _np
-                hues = _np.linspace(0, 360, n, endpoint=False)
-                return [f"hsl({int(round(h))}, {sat}%, {light}%)" for h in hues]
-            
-            palette = distinct_palette(len(cluster_order))
-            color_map = {label: palette[i] for i, label in enumerate(cluster_order)}
-            # =======================================
-            
-            fig = px.scatter(
-                merged,
-                x="tsne_x",
-                y="tsne_y",
-                color="Cluster",
-                category_orders={"Cluster": cluster_order},
-                color_discrete_map=color_map,   # ← NEU: feste, eindeutige Farben
-                hover_data=hover_cols,
-                template="plotly_white",
-                title=title,
-                render_mode="webgl",
-            )
-
-            color_by_name = {}
-            for tr in fig.data:
-                mask = (merged["Cluster"] == tr.name)
-                sizes = merged.loc[mask, "__marker_px"].tolist()
-                tr.marker.update(size=sizes, sizemode="diameter", opacity=0.55, line=dict(width=0.5, color="white"))
-                cval = tr.marker.color
-                if isinstance(cval, (list, np.ndarray)) and len(cval) > 0:
-                    cval = cval[0]
-                color_by_name[tr.name] = cval
-                tr.hoverlabel = dict(bgcolor=cval, font_color="white", bordercolor="black")
-                tr.legendgroup = tr.name
-                tr.showlegend = False
-
-            for name in cluster_order:
-                fig.add_trace(go.Scattergl(
-                    x=[None], y=[None],
-                    mode="markers",
-                    name=name,
-                    legendgroup=name,
-                    showlegend=True,
-                    marker=dict(size=12, color=color_by_name.get(name, None), line=dict(width=0.5, color="white")),
-                    hoverinfo="skip"
-                ))
 
         if centroid_xy is not None:
             cx, cy = centroid_xy
